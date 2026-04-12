@@ -9,7 +9,6 @@
  * @module activityMonitor
  */
 
-const activeWin = require('active-win');
 const { execSync } = require('child_process');
 const log = require('electron-log');
 
@@ -117,13 +116,55 @@ class ActivityMonitor {
   }
 
   /**
+   * Get active window info using PowerShell (no native module needed)
+   */
+  getActiveWindowPS() {
+    try {
+      const psCommand = `Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public class WinAPI {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
+}
+'@ -ErrorAction SilentlyContinue;
+$h = [WinAPI]::GetForegroundWindow();
+$sb = New-Object Text.StringBuilder 512;
+[void][WinAPI]::GetWindowText($h, $sb, 512);
+$pid2 = 0; [void][WinAPI]::GetWindowThreadProcessId($h, [ref]$pid2);
+$p = Get-Process -Id $pid2 -ErrorAction SilentlyContinue;
+@{title=$sb.ToString();name=if($p){$p.Name}else{''};path=if($p){$p.Path}else{''}} | ConvertTo-Json`;
+
+      const output = execSync(
+        `powershell -NoProfile -Command "${psCommand.replace(/"/g, '\\"').replace(/\n/g, ' ')}"`,
+        { encoding: 'utf-8', timeout: 5000, windowsHide: true }
+      );
+
+      const data = JSON.parse(output);
+      if (!data || !data.title) return null;
+
+      return {
+        title: data.title,
+        owner: {
+          name: data.name || '',
+          path: data.path || '',
+        }
+      };
+    } catch (err) {
+      return null;
+    }
+  }
+
+  /**
    * Check active window and track changes
    */
   async checkActiveWindow() {
     if (!this.monitoringActive) return;
 
     try {
-      const window = await activeWin();
+      const window = this.getActiveWindowPS();
       
       if (!window || !window.owner) {
         // No active window (desktop/lock screen)
