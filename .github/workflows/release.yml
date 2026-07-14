@@ -57,6 +57,16 @@ jobs:
           }
           "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Ensure release tag exists
+        shell: pwsh
+        run: |
+          $tag = "v$env:RELEASE_VERSION"
+          $existing = git ls-remote --tags origin "refs/tags/$tag"
+          if (-not $existing) {
+            git tag $tag $env:GITHUB_SHA
+            git push origin $tag
+          }
+
       - name: Install server dependencies
         working-directory: server
         run: npm ci
