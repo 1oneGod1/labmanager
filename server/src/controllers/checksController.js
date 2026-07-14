@@ -1,4 +1,4 @@
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 
 // ── POST /api/checks ──────────────────────────────────────────────────────
 // Catat hasil checklist fasilitas dari klien (pre atau post sesi)

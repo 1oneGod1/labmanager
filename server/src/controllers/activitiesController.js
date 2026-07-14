@@ -1,4 +1,4 @@
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 
 /**
  * Activities Controller

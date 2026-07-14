@@ -1,4 +1,4 @@
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 const { normalizeControlSettings } = require('../services/controlPolicyService');
 
 // ── GET /api/control/settings ────────────────────────────────────
@@ -24,7 +24,7 @@ async function updateSettings(req, res) {
   }
 
   try {
-    // Convert values to strings for Firestore storage
+    // Simpan nilai dalam format string agar kontrak pengaturan tetap konsisten.
     const data = {};
     for (const [key, value] of Object.entries(updates)) {
       data[key] = typeof value === 'object' ? JSON.stringify(value) : String(value);

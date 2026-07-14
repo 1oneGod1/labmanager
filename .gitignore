@@ -48,6 +48,11 @@ desktop.ini
 coverage/
 .nyc_output/
 
+# Local database and backups
+server/data/
+*.db-wal
+*.db-shm
+
 # Misc
 *.tmp
 *.temp

@@ -9,6 +9,7 @@ import {
   ClipboardList, FilterX, ThumbsUp, ThumbsDown, Eye, EyeOff, Maximize2,
   PowerOff, Play, Radio, Cpu, Activity, MessageCircle,
   BookOpen, FileText, FolderOpen, LayoutGrid, List, Upload, Trophy,
+  HardDrive, Archive,
 } from 'lucide-react';
 import StudentModal from './components/StudentModal.jsx';
 import ActivityMonitor from './components/ActivityMonitor.jsx';
@@ -232,6 +233,13 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
+function formatBytes(value) {
+  const bytes = Number(value || 0);
+  if (!bytes) return '0 KB';
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
 // ─── Toast sederhana ───────────────────────────────────────────────────────
 function Toast({ message, type, onClose }) {
   const onCloseRef = useRef(onClose);
@@ -263,6 +271,10 @@ export default function AdminDashboard() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [serverInfo, setServerInfo]   = useState(null);
   const [updateStatus, setUpdateStatus] = useState(null); // { state, version, percent, ... }
+  const [storageInfo, setStorageInfo] = useState(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [pairingKey, setPairingKey] = useState('');
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -408,6 +420,45 @@ export default function AdminDashboard() {
   };
   const handleDownloadUpdate = () => window.electronAPI?.downloadUpdate?.();
   const handleInstallUpdate  = () => window.electronAPI?.installUpdate?.();
+
+  const loadStorageInfo = useCallback(async () => {
+    if (DEMO_MODE || !sessionStorage.getItem('admin_token')) return;
+    setStorageLoading(true);
+    try {
+      const [storageResult, pairingResult] = await Promise.all([
+        apiFetch('/api/admin/storage/status'),
+        apiFetch('/api/admin/pairing-key'),
+      ]);
+      if (storageResult.success) setStorageInfo(storageResult.data);
+      if (pairingResult.success) setPairingKey(pairingResult.data?.pairing_key || '');
+    } catch {
+      setStorageInfo(null);
+      setPairingKey('');
+    } finally {
+      setStorageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (authReady && activeTab === 'server') loadStorageInfo();
+  }, [authReady, activeTab, loadStorageInfo]);
+
+  const handleCreateStorageBackup = async () => {
+    setBackupBusy(true);
+    try {
+      const result = await apiFetch('/api/admin/storage/backup', { method: 'POST' });
+      if (result.success) {
+        showToast(result.message || 'Backup database berhasil dibuat.');
+        await loadStorageInfo();
+      } else {
+        showToast(result.message || 'Backup database gagal dibuat.', 'error');
+      }
+    } catch {
+      showToast('Backup database gagal dibuat.', 'error');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   // ── Screen Share ─────────────────────────────────────────────────
   const [screens, setScreens]           = useState([]);
@@ -1456,6 +1507,75 @@ export default function AdminDashboard() {
 
         {/* ── Daftar IP Jaringan ── */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-50 text-blue-600"><HardDrive className="w-5 h-5" /></div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-lg">Penyimpanan Lokal</h3>
+                <p className="text-sm text-slate-500">Data disimpan di komputer Admin dan tetap aktif tanpa internet.</p>
+              </div>
+            </div>
+            <span className={`text-xs rounded-full px-3 py-1 font-semibold ${storageInfo?.available ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+              {storageLoading ? 'Memeriksa...' : storageInfo?.available ? 'SQLite Aktif' : 'Belum terbaca'}
+            </span>
+          </div>
+          <div className="p-6 grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 items-start">
+            <div className="space-y-3 min-w-0">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold">File database</p>
+                <p className="mt-1 font-mono text-xs text-slate-700 break-all">{storageInfo?.database_path || 'Memuat lokasi database...'}</p>
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-slate-400 font-semibold">Folder backup</p>
+                <p className="mt-1 font-mono text-xs text-slate-700 break-all">{storageInfo?.backup_path || 'Memuat lokasi backup...'}</p>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+                <span>Ukuran: <strong className="text-slate-700">{formatBytes(storageInfo?.size_bytes)}</strong></span>
+                <span>Backup otomatis: <strong className="text-slate-700">setiap {storageInfo?.backup_interval_hours || 24} jam</strong></span>
+                <span>Retensi: <strong className="text-slate-700">{storageInfo?.backup_retention_days || 30} hari</strong></span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Backup terakhir: <strong className="text-slate-700">{storageInfo?.last_backup_at ? new Date(storageInfo.last_backup_at).toLocaleString('id-ID') : 'belum ada'}</strong>
+              </p>
+            </div>
+            <button
+              onClick={handleCreateStorageBackup}
+              disabled={backupBusy || !storageInfo?.available}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
+            >
+              {backupBusy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
+              {backupBusy ? 'Membuat backup...' : 'Backup Sekarang'}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 text-amber-800">
+                <ShieldCheck className="h-5 w-5" />
+                <h3 className="font-bold">Kunci Pairing PC Siswa</h3>
+              </div>
+              <p className="mt-1 text-sm text-amber-700">Masukkan kunci ini pada menu Pengaturan LabKom Siswa. Jangan bagikan di luar petugas lab.</p>
+              <p className="mt-3 break-all rounded-xl border border-amber-200 bg-white px-4 py-3 font-mono text-sm font-semibold text-slate-800">
+                {pairingKey || 'Memuat kunci pairing...'}
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={!pairingKey}
+              onClick={async () => {
+                await navigator.clipboard.writeText(pairingKey);
+                showToast('Kunci pairing disalin.');
+              }}
+              className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+            >
+              <Copy className="h-4 w-4" /> Salin Kunci
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
             <div>
               <h3 className="font-bold text-slate-800 text-lg">Alamat IP Jaringan</h3>
@@ -1516,8 +1636,9 @@ export default function AdminDashboard() {
               <p className="font-semibold mb-1">Cara konfigurasi Client PC:</p>
               <ol className="list-decimal list-inside space-y-1 text-blue-700">
                 <li>Buka aplikasi <strong>LabKom Siswa</strong> di PC client.</li>
+                <li>Buka <strong>Pengaturan aplikasi</strong>, tempel Kunci Pairing, lalu simpan.</li>
                 <li>Pada layar pencarian, tunggu server ditemukan otomatis via UDP.</li>
-                <li>Jika tidak terdeteksi otomatis, klik <strong>"Masukkan manual"</strong> dan gunakan URL dari daftar di atas.</li>
+                <li>Jika tidak terdeteksi otomatis, gunakan URL dari daftar di atas.</li>
                 <li>Pastikan PC client berada di jaringan LAN yang sama.</li>
               </ol>
             </div>

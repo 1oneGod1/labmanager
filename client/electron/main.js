@@ -83,6 +83,7 @@ const DEFAULT_CLIENT_SETTINGS = Object.freeze({
   autoUpdate: true,
   openAtLogin: true,
   notifyUpdates: true,
+  registrationKey: '',
 });
 let clientSettings = { ...DEFAULT_CLIENT_SETTINGS };
 let updateCheckTimer = null;
@@ -97,6 +98,7 @@ function sanitizeClientSettings(value = {}) {
     autoUpdate: value.autoUpdate !== false,
     openAtLogin: value.openAtLogin !== false,
     notifyUpdates: value.notifyUpdates !== false,
+    registrationKey: String(value.registrationKey || '').trim().slice(0, 256),
   };
 }
 
@@ -264,8 +266,9 @@ function requestDeviceToken(serverUrl) {
       pc_name: os.hostname(),
     });
     const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
-    if (process.env.LABKOM_CLIENT_REGISTRATION_KEY) {
-      headers['X-LabKom-Registration-Key'] = process.env.LABKOM_CLIENT_REGISTRATION_KEY;
+    const registrationKey = clientSettings.registrationKey || process.env.LABKOM_CLIENT_REGISTRATION_KEY;
+    if (registrationKey) {
+      headers['X-LabKom-Registration-Key'] = registrationKey;
     }
     const req = http.request({
       hostname: parsed.hostname,
@@ -985,11 +988,16 @@ ipcMain.handle('save-client-settings', async (_event, payload = {}) => {
   }
 
   const previousConfig = loadServerConfig();
+  const previousRegistrationKey = clientSettings.registrationKey;
   if (nextServerUrl && nextServerUrl !== previousConfig.serverUrl) {
     saveServerConfig({ ...previousConfig, serverUrl: nextServerUrl });
     setStoredClientToken(null);
     connectRealtime(nextServerUrl);
     startPresenceHeartbeat();
+  }
+
+  if (String(payload.registrationKey || '').trim() !== previousRegistrationKey) {
+    setStoredClientToken(null);
   }
 
   try {

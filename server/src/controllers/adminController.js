@@ -9,6 +9,7 @@ const {
 } = require('../services/adminSessionService');
 const { checkAllowed, registerFailure, clearFailures } = require('../services/adminRateLimitService');
 const { logAdminAction } = require('../services/adminAuditService');
+const dataService = require('../services/dataService');
 
 // Hash bcrypt untuk password admin awal pada instalasi baru.
 const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$10$x7A71CHObExmQ7nqG0/pduYE1ye3TjjQqeMGa5qtWsA9q.ALnu6Te';
@@ -187,6 +188,58 @@ function revokeDeviceClaim(req, res) {
   res.json({ success: true, message: `Claim untuk ${pc_name} telah dihapus. Device akan otomatis register ulang.` });
 }
 
+// GET /api/admin/storage/status
+function storageStatus(_req, res) {
+  try {
+    return res.json({ success: true, data: dataService.getStorageStatus() });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: `Status penyimpanan tidak dapat dibaca: ${error.message}`,
+    });
+  }
+}
+
+// POST /api/admin/storage/backup
+async function createStorageBackup(req, res) {
+  try {
+    const backup = await dataService.createBackup('manual');
+    logAdminAction(req, {
+      action: 'ADMIN_CREATE_LOCAL_BACKUP',
+      statusCode: 201,
+      success: true,
+      metadata: { size_bytes: backup.size_bytes },
+    }).catch(() => {});
+    return res.status(201).json({
+      success: true,
+      message: 'Backup database lokal berhasil dibuat.',
+      data: backup,
+    });
+  } catch (error) {
+    logAdminAction(req, {
+      action: 'ADMIN_CREATE_LOCAL_BACKUP',
+      statusCode: 500,
+      success: false,
+    }).catch(() => {});
+    return res.status(500).json({
+      success: false,
+      message: `Backup gagal dibuat: ${error.message}`,
+    });
+  }
+}
+
+// GET /api/admin/pairing-key
+function getPairingKey(_req, res) {
+  const pairingKey = String(process.env.CLIENT_REGISTRATION_KEY || '').trim();
+  if (pairingKey.length < 32) {
+    return res.status(503).json({
+      success: false,
+      message: 'Kunci pairing belum tersedia. Buka ulang aplikasi Admin untuk membuatnya.',
+    });
+  }
+  return res.json({ success: true, data: { pairing_key: pairingKey } });
+}
+
 module.exports = {
   verifyPassword,
   login,
@@ -195,6 +248,9 @@ module.exports = {
   refreshToken,
   listDeviceClaims,
   revokeDeviceClaim,
+  storageStatus,
+  createStorageBackup,
+  getPairingKey,
   compareAdminPassword,
   DEFAULT_ADMIN_PASSWORD_HASH,
 };

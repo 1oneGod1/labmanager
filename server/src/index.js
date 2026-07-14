@@ -6,6 +6,15 @@ const express = require('express');
 const cors    = require('cors');
 const os      = require('os');
 const http    = require('http');
+const dataService = require('./services/dataService');
+
+try {
+  dataService.initialize({ scheduleBackups: process.env.NODE_ENV !== 'test' });
+} catch (error) {
+  console.error('[DATA] Gagal menginisialisasi penyimpanan:', error.message);
+  process.exitCode = 1;
+  throw error;
+}
 
 function getLanIp() {
   const ifaces = os.networkInterfaces();
@@ -68,7 +77,16 @@ app.use((req, _res, next) => {
 // Routes
 // =====================
 app.get('/', (_req, res) => {
-  res.json({ message: 'Labkom Server berjalan!', version: '1.0.0' });
+  const storage = dataService.getStorageStatus();
+  res.json({
+    message: 'Labkom Server berjalan!',
+    version: '1.2.0',
+    storage: {
+      provider: storage.provider,
+      mode: storage.mode,
+      available: storage.available,
+    },
+  });
 });
 
 app.use('/api/auth',       authRoutes);
@@ -102,3 +120,22 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  LAN   : http://${lanIp}:${PORT}`);
   console.log('========================================');
 });
+
+let shutdownStarted = false;
+async function shutdown(signal) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  console.log(`[SERVER] Menerima ${signal}, menutup server dan menyimpan backup...`);
+  server.close(() => {});
+  const forceExit = setTimeout(() => process.exit(0), 3500);
+  forceExit.unref();
+  try {
+    await dataService.shutdown({ backup: true });
+  } catch (error) {
+    console.warn('[DATA] Gagal menutup penyimpanan dengan bersih:', error.message);
+  }
+  process.exit(0);
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));

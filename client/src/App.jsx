@@ -87,9 +87,10 @@ export default function App() {
     autoUpdate: true,
     openAtLogin: true,
     notifyUpdates: true,
-    appVersion: '1.1.0',
+    registrationKey: '',
+    appVersion: '1.2.0',
   });
-  const [updateStatus, setUpdateStatus] = useState({ state: 'idle', currentVersion: '1.1.0' });
+  const [updateStatus, setUpdateStatus] = useState({ state: 'idle', currentVersion: '1.2.0' });
   const autoSwitchingServerRef = useRef(false);
   const socketRef = useRef(null);
 
@@ -498,7 +499,7 @@ export default function App() {
     }
 
     if (!window.electronAPI?.saveClientSettings) {
-      const localSettings = { ...nextSettings, serverUrl: normalizedUrl, appVersion: '1.1.0' };
+      const localSettings = { ...nextSettings, serverUrl: normalizedUrl, appVersion: '1.2.0' };
       setClientSettings(localSettings);
       persistServerUrl(normalizedUrl);
       return { success: true, settings: localSettings };

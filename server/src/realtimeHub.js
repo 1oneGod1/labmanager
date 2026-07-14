@@ -11,7 +11,7 @@ const {
   removeScreen,
   getActiveScreens,
 } = require('./services/screenRelayService');
-const firebaseService = require('./services/firebaseService');
+const firebaseService = require('./services/dataService');
 const {
   validateDistributionPayload,
   normalizeFileStatus,

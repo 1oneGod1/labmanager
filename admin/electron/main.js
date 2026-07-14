@@ -12,6 +12,7 @@ const http             = require('http');
 const dgram            = require('dgram');
 const { spawn }        = require('child_process');
 const fs               = require('fs');
+const crypto           = require('crypto');
 
 // Gunakan nama produk untuk lokasi konfigurasi agar sesuai dokumentasi dan
 // mudah ditemukan oleh operator lab.
@@ -39,6 +40,17 @@ function applyAdminPasswordPolicy(envPath) {
 
   content = upsertEnvValue(content, 'ADMIN_PASSWORD', DEFAULT_ADMIN_PASSWORD_HASH);
   content = upsertEnvValue(content, 'LABKOM_ADMIN_PASSWORD_POLICY_VERSION', ADMIN_PASSWORD_POLICY_VERSION);
+  fs.writeFileSync(envPath, content, 'utf8');
+  return true;
+}
+
+function ensureClientRegistrationKey(envPath) {
+  let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  const configured = content.match(/^CLIENT_REGISTRATION_KEY=(.*)$/m)?.[1]?.trim() || '';
+  if (configured.length >= 32) return false;
+
+  const generated = crypto.randomBytes(24).toString('base64url');
+  content = upsertEnvValue(content, 'CLIENT_REGISTRATION_KEY', generated);
   fs.writeFileSync(envPath, content, 'utf8');
   return true;
 }
@@ -298,6 +310,9 @@ async function startServer() {
   if (!isDev && applyAdminPasswordPolicy(managedEnvPath)) {
     log.info('[SERVER] Password admin bawaan berhasil dimigrasikan.');
   }
+  if (!isDev && ensureClientRegistrationKey(managedEnvPath)) {
+    log.info('[SERVER] Kunci pairing client dibuat otomatis.');
+  }
   console.log('[ADMIN] Menjalankan server:', serverEntry, '| node:', nodeExe);
 
   serverStopRequested = false;
@@ -305,6 +320,8 @@ async function startServer() {
     ...process.env,
     NODE_ENV: 'production',
     LABKOM_ENV_PATH: managedEnvPath,
+    LABKOM_DATA_DIR: path.join(app.getPath('userData'), 'data'),
+    LABKOM_BACKUP_DIR: path.join(app.getPath('userData'), 'backups'),
   };
   // server.env adalah sumber konfigurasi admin yang otoritatif. Hindari nilai
   // ADMIN_PASSWORD dari shell induk mengalahkan hasil migrasi dotenv.

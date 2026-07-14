@@ -1,4 +1,4 @@
-const firebaseService = require('./firebaseService');
+const firebaseService = require('./dataService');
 const { normalizePcName, normalizeMac } = require('./clientRegistryService');
 
 async function getLabComputers() {

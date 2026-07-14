@@ -1,4 +1,4 @@
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 
 // GET /api/sessions — semua sesi (untuk dashboard admin)
 async function getAllSessions(req, res) {

@@ -1,6 +1,6 @@
 const bcrypt     = require('bcryptjs');
 const os         = require('os');
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 const { getClientRegistry, normalizePcName } = require('../services/clientRegistryService');
 const { resolveMappedLabPc } = require('../services/labComputerService');
 const clientTokenService = require('../services/clientTokenService');

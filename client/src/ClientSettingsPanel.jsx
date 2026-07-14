@@ -8,6 +8,7 @@ import {
   RefreshCw,
   Save,
   Server,
+  KeyRound,
   Settings,
   X,
 } from 'lucide-react';
@@ -101,7 +102,7 @@ function UpdateStatus({ status = {}, autoUpdate, onCheck, onDownload, onInstall 
 }
 
 export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStatus, onClose, onSave, onCheck, onDownload, onInstall }) {
-  const [draft, setDraft] = useState({ autoUpdate: true, openAtLogin: true, notifyUpdates: true, serverUrl: '' });
+  const [draft, setDraft] = useState({ autoUpdate: true, openAtLogin: true, notifyUpdates: true, serverUrl: '', registrationKey: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
 
@@ -112,6 +113,7 @@ export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStat
       openAtLogin: settings.openAtLogin !== false,
       notifyUpdates: settings.notifyUpdates !== false,
       serverUrl: serverUrl || settings.serverUrl || '',
+      registrationKey: settings.registrationKey || '',
     });
     setMessage(null);
   }, [open, serverUrl, settings]);
@@ -151,6 +153,19 @@ export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStat
               className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 font-mono text-sm text-white outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
             />
             <p className="mt-1.5 text-xs text-slate-500">Hanya alamat HTTP pada jaringan lokal yang diterima.</p>
+          </div>
+
+          <div>
+            <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"><KeyRound className="h-4 w-4 text-amber-300" /> Kunci pairing PC</label>
+            <input
+              type="password"
+              value={draft.registrationKey}
+              onChange={(event) => setDraft((current) => ({ ...current, registrationKey: event.target.value }))}
+              placeholder="Salin dari menu Server pada aplikasi Admin"
+              autoComplete="off"
+              className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 font-mono text-sm text-white outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
+            />
+            <p className="mt-1.5 text-xs text-slate-500">Kunci ini dibuat otomatis oleh Admin dan diperlukan untuk mendaftarkan PC ke server.</p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">

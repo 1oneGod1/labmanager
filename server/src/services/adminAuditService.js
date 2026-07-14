@@ -1,5 +1,4 @@
-const { isFirestoreAvailable } = require('./firebaseService');
-const admin = require('firebase-admin');
+const dataService = require('./dataService');
 
 function getIp(req) {
   const xff = req.headers['x-forwarded-for'];
@@ -18,13 +17,17 @@ async function logAdminAction(req, payload = {}) {
   } = payload;
 
   try {
-    if (!isFirestoreAvailable()) {
-      console.warn('[AUDIT] Firestore not available, skipping audit log.');
+    if (!dataService.isStorageAvailable()) {
+      console.warn('[AUDIT] Penyimpanan tidak tersedia, log audit dilewati.');
       return;
     }
 
-    const db = admin.firestore();
-    await db.collection('admin_audit_logs').add({
+    if (!dataService.audit?.create) {
+      console.warn('[AUDIT] Provider penyimpanan tidak mendukung audit log.');
+      return;
+    }
+
+    await dataService.audit.create({
       action,
       method: req.method,
       path: req.originalUrl,
@@ -33,7 +36,7 @@ async function logAdminAction(req, payload = {}) {
       ip_address: getIp(req),
       user_agent: req.headers['user-agent'] || null,
       metadata: metadata || null,
-      created_at: admin.firestore.FieldValue.serverTimestamp(),
+      created_at: new Date(),
     });
   } catch (err) {
     console.warn('[AUDIT] Gagal simpan log admin:', err.message);

@@ -1,4 +1,4 @@
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 
 // ── GET /api/sessions/history?date=YYYY-MM-DD&page=1&limit=50 ───
 async function getHistory(req, res) {

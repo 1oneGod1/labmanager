@@ -1,6 +1,17 @@
 const express = require('express');
 const router  = express.Router();
-const { verifyPassword, login, me, logout, refreshToken, listDeviceClaims, revokeDeviceClaim } = require('../controllers/adminController');
+const {
+  verifyPassword,
+  login,
+  me,
+  logout,
+  refreshToken,
+  listDeviceClaims,
+  revokeDeviceClaim,
+  storageStatus,
+  createStorageBackup,
+  getPairingKey,
+} = require('../controllers/adminController');
 const { requireAdmin } = require('../middleware/requireAdmin');
 
 // POST /api/admin/verify-password
@@ -13,5 +24,8 @@ router.post('/logout', requireAdmin, logout);
 // Device claim management (admin only)
 router.get('/device-claims',           requireAdmin, listDeviceClaims);
 router.post('/device-claims/revoke',   requireAdmin, revokeDeviceClaim);
+router.get('/storage/status',          requireAdmin, storageStatus);
+router.post('/storage/backup',         requireAdmin, createStorageBackup);
+router.get('/pairing-key',             requireAdmin, getPairingKey);
 
 module.exports = router;

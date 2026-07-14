@@ -1,18 +1,17 @@
 const bcrypt = require('bcryptjs');
-const firebaseService = require('../services/firebaseService');
+const firebaseService = require('../services/dataService');
 
 // ══════════════════════════════════════════════════════════════════════════
-// STUDENTS CONTROLLER - MIGRATED TO FIREBASE
+// STUDENTS CONTROLLER - STORAGE PROVIDER INDEPENDENT
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── GET /api/students ────────────────────────────────────────────
 async function getStudents(_req, res) {
   try {
-    // Check if Firebase is available
-    if (!firebaseService.isFirestoreAvailable()) {
+    if (!firebaseService.isStorageAvailable()) {
       return res.status(503).json({ 
         success: false, 
-        message: 'Database tidak tersedia. Silakan setup Firebase terlebih dahulu.' 
+        message: 'Database lokal tidak tersedia. Periksa folder data aplikasi Admin.'
       });
     }
 
@@ -40,18 +39,17 @@ async function createStudent(req, res) {
   }
 
   try {
-    // Check if Firebase is available
-    if (!firebaseService.isFirestoreAvailable()) {
+    if (!firebaseService.isStorageAvailable()) {
       return res.status(503).json({ 
         success: false, 
-        message: 'Database tidak tersedia. Silakan setup Firebase terlebih dahulu.' 
+        message: 'Database lokal tidak tersedia. Periksa folder data aplikasi Admin.'
       });
     }
 
     // Hash password
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Create student via Firebase service
+    // Create student via active storage provider.
     const newStudent = await firebaseService.students.create({
       nis,
       nama_lengkap,
@@ -83,11 +81,10 @@ async function updateStudent(req, res) {
   const { nis, nama_lengkap, kelas, is_active, password } = req.body;
 
   try {
-    // Check if Firebase is available
-    if (!firebaseService.isFirestoreAvailable()) {
+    if (!firebaseService.isStorageAvailable()) {
       return res.status(503).json({ 
         success: false, 
-        message: 'Database tidak tersedia. Silakan setup Firebase terlebih dahulu.' 
+        message: 'Database lokal tidak tersedia. Periksa folder data aplikasi Admin.'
       });
     }
 
@@ -110,7 +107,7 @@ async function updateStudent(req, res) {
       updateData.password_hash = await bcrypt.hash(password, 10);
     }
 
-    // Update via Firebase service
+    // Update via active storage provider.
     await firebaseService.students.update(id, updateData);
 
     return res.json({ success: true, message: 'Data siswa berhasil diperbarui.' });
@@ -126,11 +123,10 @@ async function deleteStudent(req, res) {
   const { id } = req.params;
 
   try {
-    // Check if Firebase is available
-    if (!firebaseService.isFirestoreAvailable()) {
+    if (!firebaseService.isStorageAvailable()) {
       return res.status(503).json({ 
         success: false, 
-        message: 'Database tidak tersedia. Silakan setup Firebase terlebih dahulu.' 
+        message: 'Database lokal tidak tersedia. Periksa folder data aplikasi Admin.'
       });
     }
 
@@ -140,7 +136,7 @@ async function deleteStudent(req, res) {
       return res.status(404).json({ success: false, message: 'Siswa tidak ditemukan.' });
     }
 
-    // Soft delete via Firebase service
+    // Soft delete via active storage provider.
     await firebaseService.students.delete(id);
 
     return res.json({ success: true, message: 'Akun siswa berhasil dinonaktifkan.' });
