@@ -5,7 +5,7 @@
  * Lalu copy hasil SQL-nya ke phpMyAdmin dan Execute
  */
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const passwords = [
   { nis: '10001', password: 'budi123'  },

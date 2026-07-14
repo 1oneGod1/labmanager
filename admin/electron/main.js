@@ -13,6 +13,12 @@ const dgram            = require('dgram');
 const { spawn }        = require('child_process');
 const fs               = require('fs');
 
+// Gunakan nama produk untuk lokasi konfigurasi agar sesuai dokumentasi dan
+// mudah ditemukan oleh operator lab.
+const ADMIN_USER_DATA_NAME = 'LabKom Admin - Dashboard';
+const LEGACY_ADMIN_USER_DATA_NAME = 'labkom-admin';
+app.setPath('userData', path.join(app.getPath('appData'), ADMIN_USER_DATA_NAME));
+
 const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$10$x7A71CHObExmQ7nqG0/pduYE1ye3TjjQqeMGa5qtWsA9q.ALnu6Te';
 const ADMIN_PASSWORD_POLICY_VERSION = '2026-07-14-1';
 
@@ -266,7 +272,7 @@ async function startServer() {
   const serverEntry = path.join(serverDir, 'src', 'index.js');
 
   if (!fs.existsSync(serverEntry)) {
-    console.error('[ADMIN] Server entry tidak ditemukan:', serverEntry);
+    log.error('[ADMIN] Server entry tidak ditemukan:', serverEntry);
     serverStatus = 'error';
     sendServerStatus('error');
     return false;
@@ -278,9 +284,15 @@ async function startServer() {
   const managedEnvPath = isDev
     ? path.join(serverDir, '.env')
     : path.join(app.getPath('userData'), 'server.env');
+  if (!isDev) fs.mkdirSync(path.dirname(managedEnvPath), { recursive: true });
   if (!isDev && !fs.existsSync(managedEnvPath)) {
     const examplePath = path.join(serverDir, '.env.example');
-    if (fs.existsSync(examplePath)) fs.copyFileSync(examplePath, managedEnvPath);
+    const legacyEnvPath = path.join(app.getPath('appData'), LEGACY_ADMIN_USER_DATA_NAME, 'server.env');
+    if (fs.existsSync(legacyEnvPath)) {
+      fs.copyFileSync(legacyEnvPath, managedEnvPath);
+    } else if (fs.existsSync(examplePath)) {
+      fs.copyFileSync(examplePath, managedEnvPath);
+    }
     log.warn('[SERVER] Konfigurasi dibuat di:', managedEnvPath);
   }
   if (!isDev && applyAdminPasswordPolicy(managedEnvPath)) {
@@ -322,7 +334,7 @@ async function startServer() {
       serverStatus = 'online';
       sendServerStatus('online');
     } else {
-      console.error('[SERVER ERR]', msg);
+      log.error('[SERVER ERR]', msg);
     }
   });
 
@@ -344,7 +356,7 @@ async function startServer() {
   });
 
   managedProcess.on('error', (err) => {
-    console.error('[SERVER] Gagal menjalankan:', err.message);
+    log.error('[SERVER] Gagal menjalankan:', err.message);
     serverStatus = 'error';
     sendServerStatus('error');
     scheduleServerRestart('spawn-error');
@@ -357,7 +369,7 @@ async function startServer() {
     return true;
   }
 
-  console.error('[SERVER] Backend belum sehat setelah menunggu startup.');
+  log.error('[SERVER] Backend belum sehat setelah menunggu startup.');
   serverStatus = 'error';
   sendServerStatus('error');
   scheduleServerRestart('startup-timeout');

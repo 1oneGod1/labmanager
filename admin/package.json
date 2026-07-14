@@ -8,6 +8,7 @@
   "scripts": {
     "dev:react": "vite --port 5174",
     "build:react": "vite build",
+    "verify:packaged-server": "node scripts/verify-packaged-server.cjs",
     "electron:dev": "set \"ELECTRON_RUN_AS_NODE=\" && concurrently \"npm.cmd run dev:react\" \"wait-on http://localhost:5174 && electron .\"",
     "electron:build": "set \"ELECTRON_RUN_AS_NODE=\" && npm.cmd run build:react && electron-builder"
   },
@@ -57,6 +58,13 @@
           "!node_modules/nodemon/**",
           "!test/**",
           "!*.log"
+        ]
+      },
+      {
+        "from": "../server/node_modules",
+        "to": "server/node_modules",
+        "filter": [
+          "**/*"
         ]
       }
     ],

@@ -69,7 +69,7 @@ jobs:
 
       - name: Install server dependencies
         working-directory: server
-        run: npm ci
+        run: npm ci --omit=dev
 
       - name: Install client dependencies
         working-directory: client
@@ -94,6 +94,10 @@ jobs:
       - name: Build Admin app
         working-directory: admin
         run: npm run electron:build -- --publish never
+
+      - name: Verify packaged Admin backend
+        working-directory: admin
+        run: npm run verify:packaged-server
 
       - name: Publish complete GitHub Release
         shell: pwsh
