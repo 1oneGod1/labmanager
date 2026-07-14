@@ -5,9 +5,10 @@
 * { box-sizing: border-box; }
 
 /* Scrollbar tipis */
-::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 99px; }
+::-webkit-scrollbar-thumb { background: #2a3b55; border: 2px solid transparent; background-clip: padding-box; border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: #3a506f; border: 2px solid transparent; background-clip: padding-box; }
 
 /* Animasi sederhana */
 @keyframes fade-in   { from { opacity: 0; } to { opacity: 1; } }

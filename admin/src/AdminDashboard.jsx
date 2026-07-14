@@ -99,6 +99,18 @@ const DEMO_HISTORY = DEMO_PCS.filter((pc) => pc.student).map((pc, index) => ({
   type: 'Sesi aktif',
 }));
 
+const ADMIN_NAV_ITEMS = [
+  { id: 'monitoring', label: 'Monitor', title: 'Pemantauan Lab', description: 'Pantau seluruh komputer secara langsung', icon: LayoutGrid },
+  { id: 'screens', label: 'Layar', title: 'Remote Layar', description: 'Lihat dan kendalikan layar siswa', icon: Eye },
+  { id: 'control', label: 'Kebijakan', title: 'Kebijakan Lab', description: 'Atur akses web, aplikasi, dan perangkat', icon: ShieldCheck },
+  { id: 'files', label: 'Berkas', title: 'Distribusi Berkas', description: 'Kirim materi ke komputer siswa', icon: FolderOpen },
+  { id: 'checks', label: 'Fasilitas', title: 'Kondisi Fasilitas', description: 'Tinjau laporan perangkat dan meja', icon: ClipboardList },
+  { id: 'history', label: 'Laporan', title: 'Laporan Praktikum', description: 'Ringkasan sesi dan aktivitas lab', icon: History },
+  { id: 'students', label: 'Siswa', title: 'Data Siswa', description: 'Kelola akun dan identitas siswa', icon: Users },
+  { id: 'activities', label: 'Aktivitas', title: 'Aktivitas Siswa', description: 'Tinjau aplikasi dan situs yang digunakan', icon: Activity },
+  { id: 'server', label: 'Server', title: 'Server & Penyimpanan', description: 'Status LAN, pairing, database, dan backup', icon: Server },
+];
+
 // ─── Banner IP Server (tampil di header) ──────────────────────────────────
 function ServerInfoBanner({ info }) {
   const [copied, setCopied] = useState(false);
@@ -264,6 +276,7 @@ function Toast({ message, type, onClose }) {
 // ═══════════════════════════════════════════════════════════════════════════
 export default function AdminDashboard() {
   const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
   const [authReady, setAuthReady] = useState(DEMO_MODE);
   const [authLoading, setAuthLoading] = useState(!DEMO_MODE);
   const [authError, setAuthError] = useState('');
@@ -1467,10 +1480,10 @@ export default function AdminDashboard() {
     };
 
     const statusCfg = {
-      online:   { bg: 'bg-emerald-50',  border: 'border-emerald-300', dot: 'bg-emerald-500',  text: 'text-emerald-700', label: 'ONLINE',   icon: <Wifi    className="w-8 h-8 text-emerald-500" /> },
-      starting: { bg: 'bg-amber-50',    border: 'border-amber-300',   dot: 'bg-amber-400',    text: 'text-amber-700',   label: 'STARTING', icon: <Loader2 className="w-8 h-8 text-amber-500 animate-spin" /> },
-      error:    { bg: 'bg-red-50',      border: 'border-red-300',     dot: 'bg-red-500',      text: 'text-red-700',     label: 'ERROR',    icon: <WifiOff className="w-8 h-8 text-red-500" /> },
-      unknown:  { bg: 'bg-slate-50',    border: 'border-slate-300',   dot: 'bg-slate-400',    text: 'text-slate-600',   label: 'UNKNOWN',  icon: <Server  className="w-8 h-8 text-slate-400" /> },
+      online:   { bg: 'bg-emerald-50',  border: 'border-emerald-300', dot: 'bg-emerald-500',  text: 'text-emerald-700', label: 'ONLINE', icon: <Wifi className="w-8 h-8 text-emerald-500" /> },
+      starting: { bg: 'bg-amber-50',    border: 'border-amber-300',   dot: 'bg-amber-400',    text: 'text-amber-700',   label: 'MENYIAPKAN', icon: <Loader2 className="w-8 h-8 text-amber-500 animate-spin" /> },
+      error:    { bg: 'bg-red-50',      border: 'border-red-300',     dot: 'bg-red-500',      text: 'text-red-700',     label: 'GANGGUAN', icon: <WifiOff className="w-8 h-8 text-red-500" /> },
+      unknown:  { bg: 'bg-slate-50',    border: 'border-slate-300',   dot: 'bg-slate-400',    text: 'text-slate-600',   label: 'BELUM TERHUBUNG', icon: <Server className="w-8 h-8 text-slate-400" /> },
     };
     const cfg = statusCfg[status] || statusCfg.unknown;
 
@@ -1500,7 +1513,7 @@ export default function AdminDashboard() {
               className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-xl text-sm font-medium hover:bg-amber-600 disabled:opacity-60 transition-all"
             >
               {restarting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Power className="w-4 h-4" />}
-              {restarting ? 'Restarting…' : 'Restart Server'}
+              {restarting ? 'Memulai ulang…' : 'Mulai Ulang Server'}
             </button>
           </div>
         </div>
@@ -2269,7 +2282,15 @@ export default function AdminDashboard() {
             </thead>
             <tbody className="divide-y divide-slate-200">
               {filteredStudents.length === 0 ? (
-                <tr><td colSpan={5} className="p-8 text-center text-slate-400 text-sm">Tidak ada data siswa.</td></tr>
+                <tr>
+                  <td colSpan={5} className="p-14 text-center">
+                    <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
+                      <Users className="h-5 w-5" />
+                    </div>
+                    <p className="text-sm font-semibold text-slate-700">{stuSearch ? 'Siswa tidak ditemukan' : 'Belum ada data siswa'}</p>
+                    <p className="mt-1 text-xs text-slate-400">{stuSearch ? 'Coba gunakan NIS atau nama yang berbeda.' : 'Klik Tambah Siswa untuk membuat akun pertama.'}</p>
+                  </td>
+                </tr>
               ) : filteredStudents.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="p-4 text-sm font-medium text-slate-800">{s.nis}</td>
@@ -3118,12 +3139,19 @@ export default function AdminDashboard() {
     return renderDesignMonitorView();
   };
 
+  const activeNavigation = ADMIN_NAV_ITEMS.find((item) => item.id === activeTab) || ADMIN_NAV_ITEMS[0];
+  const serverOnline = DEMO_MODE || serverInfo?.status === 'online';
+
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
-        <div className="bg-white border border-slate-200 rounded-2xl px-8 py-6 shadow-sm flex items-center gap-3 text-slate-600">
-          <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-          <span>Memverifikasi akses admin...</span>
+      <div className="labkom-login is-loading">
+        <div className="labkom-loading-card">
+          <div className="labkom-loading-logo"><img src="./logo-sekolah.png" alt="Logo SPH" /></div>
+          <div>
+            <strong>LabKom Admin</strong>
+            <span>Memverifikasi akses dan menyiapkan server lokal...</span>
+          </div>
+          <Loader2 className="animate-spin" />
         </div>
       </div>
     );
@@ -3131,36 +3159,60 @@ export default function AdminDashboard() {
 
   if (!authReady) {
     return (
-      <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
-        <form onSubmit={handleAdminLogin} className="w-full max-w-md bg-white border border-slate-200 rounded-2xl shadow-sm p-8 space-y-5">
-          <div className="text-center">
-            <h1 className="text-2xl font-bold text-slate-800">Login Admin Lab</h1>
-            <p className="text-sm text-slate-500 mt-1">Masukkan password admin untuk membuka dashboard.</p>
-          </div>
-          {authError && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
-              {authError}
+      <div className="labkom-login">
+        <div className="labkom-login-shell">
+          <section className="labkom-login-visual">
+            <div className="labkom-login-brand">
+              <div className="labkom-login-logo"><img src="./logo-sekolah.png" alt="Logo Sekolah Palembang Harapan" /></div>
+              <div><strong>LABKOM</strong><span>ADMIN CONSOLE</span></div>
             </div>
-          )}
-          <div className="space-y-2">
-            <label className="text-sm text-slate-600 font-medium">Password Admin</label>
-            <input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500"
-              placeholder="Masukkan password"
-              autoFocus
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={!adminPassword.trim() || authLoading}
-            className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium transition-colors"
-          >
-            Masuk Dashboard
-          </button>
-        </form>
+            <div className="labkom-login-message">
+              <span className="labkom-login-kicker"><ShieldCheck /> Pusat kendali laboratorium</span>
+              <h1>Kelola seluruh aktivitas lab dalam satu tempat.</h1>
+              <p>Pantau komputer, atur kebijakan, kelola siswa, dan amankan data praktikum melalui jaringan lokal sekolah.</p>
+            </div>
+            <div className="labkom-login-features">
+              <div><HardDrive /><span><strong>SQLite Lokal</strong><small>Data tersimpan di PC Admin</small></span></div>
+              <div><Wifi /><span><strong>Kontrol LAN</strong><small>Terhubung tanpa layanan cloud</small></span></div>
+              <div><Archive /><span><strong>Backup Otomatis</strong><small>Cadangan dibuat terjadwal</small></span></div>
+            </div>
+            <p className="labkom-login-school">Sekolah Palembang Harapan</p>
+          </section>
+
+          <form onSubmit={handleAdminLogin} className="labkom-login-card">
+            <div className="labkom-login-card-head">
+              <span className="labkom-login-status"><i /> SERVER LOKAL</span>
+              <h2>Selamat datang</h2>
+              <p>Masuk sebagai Kepala Lab untuk membuka dashboard administrasi.</p>
+            </div>
+            {authError && (
+              <div className="labkom-login-error"><AlertTriangle /> <span>{authError}</span></div>
+            )}
+            <label className="labkom-login-field">
+              <span>Password Admin</span>
+              <div>
+                <Lock />
+                <input
+                  type={showAdminPassword ? 'text' : 'password'}
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  placeholder="Masukkan password admin"
+                  autoComplete="current-password"
+                  autoFocus
+                />
+                <button type="button" onClick={() => setShowAdminPassword((visible) => !visible)} aria-label={showAdminPassword ? 'Sembunyikan password' : 'Tampilkan password'}>
+                  {showAdminPassword ? <EyeOff /> : <Eye />}
+                </button>
+              </div>
+            </label>
+            <button type="submit" disabled={!adminPassword.trim() || authLoading} className="labkom-login-submit">
+              {authLoading ? <Loader2 className="animate-spin" /> : <ShieldCheck />}
+              <span>Masuk ke Dashboard</span>
+              <ChevronRight />
+            </button>
+            <div className="labkom-login-note"><Lock /><span>Akses dilindungi dan hanya tersedia melalui server lokal LabKom.</span></div>
+          </form>
+        </div>
       </div>
     );
   }
@@ -3170,18 +3222,27 @@ export default function AdminDashboard() {
       <div className="labkom-shell">
         <header className="labkom-header">
           <div className="labkom-brand">
-            <div className="labkom-logo">L</div>
-            <div><strong>Lab Komputer SPH</strong><span>Monitoring & classroom control</span></div>
+            <div className="labkom-logo"><img src="./logo-sekolah.png" alt="Logo SPH" /></div>
+            <div><strong>LabKom Admin</strong><span>Sekolah Palembang Harapan</span></div>
           </div>
-          <div className="labkom-session"><strong>Class X RPL 1 — Networking</strong><span>Sesi 09:00–10:30 · {pcs.length || 30} kursi</span></div>
-          <div className="labkom-live">LIVE · Monitoring</div>
+          <div className="labkom-context">
+            <span>PUSAT KENDALI</span>
+            <strong>{activeNavigation.title}</strong>
+            <small>{activeNavigation.description}</small>
+          </div>
+          <div className={`labkom-connection ${serverOnline ? 'is-online' : 'is-offline'}`}>
+            <i />
+            <div><strong>{serverOnline ? 'Server aktif' : 'Server terputus'}</strong><span>{serverInfo?.ip || 'localhost'}:{serverInfo?.port || 3001}</span></div>
+          </div>
           <div className="labkom-header-actions">
-            <button className="labkom-action" onClick={() => setActiveTab('screenshare')}><BookOpen className="w-4 h-4" /><span>Broadcast</span></button>
-            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle className="w-4 h-4" /><span>Message all</span></button>
-            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-attention'))}><Lock className="w-4 h-4" /><span>Lock all</span></button>
-            <button className="labkom-action" onClick={() => setShowPowerMenu(true)}><Power className="w-4 h-4" /><span>Power</span></button>
-            <span className="labkom-clock">{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-            <button className="labkom-avatar" onClick={handleAdminLogout} title="Keluar admin">A</button>
+            <button className="labkom-action" onClick={() => setActiveTab('screenshare')} title="Siaran layar"><BookOpen /><span>Siaran</span></button>
+            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))} title="Kirim pesan"><MessageCircle /><span>Pesan</span></button>
+            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-attention'))} title="Fokuskan semua PC"><Lock /><span>Fokus</span></button>
+            <button className="labkom-action" onClick={() => setShowPowerMenu(true)} title="Kontrol daya"><Power /><span>Daya</span></button>
+            <div className="labkom-timebox">
+              <strong>{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</strong>
+              <span>{currentTime.toLocaleDateString('id-ID', { day: '2-digit', month: 'short' })}</span>
+            </div>
           </div>
         </header>
 
@@ -3189,21 +3250,17 @@ export default function AdminDashboard() {
 
         <div className="labkom-body">
           <nav className="labkom-rail" aria-label="Navigasi admin">
-            {[
-              { id: 'monitoring', label: 'Monitor', icon: LayoutGrid },
-              { id: 'screens', label: 'Remote', icon: Eye },
-              { id: 'control', label: 'Restrict', icon: ShieldCheck },
-              { id: 'files', label: 'Files', icon: FolderOpen },
-              { id: 'checks', label: 'Register', icon: ClipboardList },
-              { id: 'history', label: 'Reports', icon: History },
-              { id: 'students', label: 'Students', icon: Users },
-              { id: 'activities', label: 'Activity', icon: Activity },
-              { id: 'server', label: 'Server', icon: Server },
-            ].map(({ id, label, icon: Icon }) => (
+            <div className="labkom-rail-items">
+            {ADMIN_NAV_ITEMS.map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setActiveTab(id)} className={`labkom-rail-button ${activeTab === id ? 'is-active' : ''}`} title={label}>
                 <Icon /><span>{label}</span>
               </button>
             ))}
+            </div>
+            <div className="labkom-rail-footer">
+              <button onClick={handleCheckUpdate} title="Periksa pembaruan"><DownloadCloud /><span>Update</span></button>
+              <button onClick={handleAdminLogout} title="Keluar Admin"><LogOut /><span>Keluar</span></button>
+            </div>
           </nav>
           <main className="labkom-workspace">{renderWorkspaceContent()}</main>
         </div>
