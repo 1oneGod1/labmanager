@@ -79,6 +79,7 @@ function attachRealtimeHub(httpServer) {
           /^http:\/\/127\.0\.0\.1(:\d+)?$/,
           /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
           /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+          /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/,
         ];
         if (ALLOWED.some(p => p.test(origin))) return callback(null, true);
         callback(new Error('Not allowed by CORS'));

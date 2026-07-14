@@ -1411,3 +1411,180 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* White-label branding */
+.labkom-brand-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: inherit;
+  color: #fff;
+  font-size: 0.46em;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.labkom-logo .labkom-brand-fallback { font-size: 15px; }
+.labkom-loading-logo .labkom-brand-fallback { font-size: 14px; }
+.labkom-login-logo .labkom-brand-fallback { font-size: 18px; }
+
+.labkom-branding {
+  height: 100%;
+  overflow-y: auto;
+  background:
+    radial-gradient(circle at 82% 0%, color-mix(in srgb, var(--brand-primary) 11%, transparent), transparent 28%),
+    var(--lab-screen);
+}
+
+.labkom-branding .labkom-page-heading {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  border-bottom: 1px solid var(--lab-line);
+  background: rgba(9, 17, 31, 0.92);
+  backdrop-filter: blur(16px);
+}
+
+.labkom-branding-actions { display: flex; align-items: center; gap: 9px; }
+.labkom-branding-actions svg { width: 16px; height: 16px; }
+.labkom-branding-secondary,
+.labkom-branding-upload,
+.labkom-branding-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 1px solid var(--lab-line-strong);
+  border-radius: 11px;
+  background: rgba(20, 35, 59, 0.74);
+  color: var(--lab-text-2);
+  font-size: 11px;
+  font-weight: 650;
+  transition: 150ms ease;
+}
+
+.labkom-branding-secondary { min-height: 41px; padding: 0 14px; }
+.labkom-branding-secondary:hover,
+.labkom-branding-upload:hover { border-color: color-mix(in srgb, var(--brand-primary) 52%, var(--lab-line)); color: var(--lab-text); }
+
+.labkom-branding-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 18px;
+  padding: 18px;
+}
+
+.labkom-branding-form { min-width: 0; display: grid; gap: 14px; }
+.labkom-branding-card {
+  overflow: hidden;
+  border: 1px solid var(--lab-line);
+  border-radius: 16px;
+  background: linear-gradient(145deg, rgba(18, 32, 54, 0.94), rgba(12, 23, 41, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.labkom-branding-card-title {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--lab-line);
+}
+
+.labkom-branding-card-title > svg {
+  width: 34px;
+  height: 34px;
+  padding: 8px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--brand-primary) 15%, transparent);
+  color: color-mix(in srgb, var(--brand-primary) 58%, white);
+}
+
+.labkom-branding-card-title h3 { margin: 0; color: var(--lab-text); font-size: 13px; letter-spacing: -0.025em; }
+.labkom-branding-card-title p { margin: 3px 0 0; color: var(--lab-text-3); font-size: 9.5px; }
+.labkom-branding-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 17px; }
+.labkom-branding-fields label,
+.labkom-branding-colors label { display: block; min-width: 0; }
+.labkom-branding-fields label.is-wide { grid-column: 1 / -1; }
+.labkom-branding-fields label > span,
+.labkom-branding-colors label > span { display: block; margin-bottom: 7px; color: var(--lab-text-2); font-size: 10px; font-weight: 650; }
+.labkom-branding-fields input,
+.labkom-branding-fields textarea {
+  width: 100%;
+  border: 1px solid var(--lab-line-strong);
+  border-radius: 11px;
+  background: rgba(8, 17, 31, 0.78);
+  color: var(--lab-text);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+.labkom-branding-fields input { min-height: 41px; padding: 0 12px; }
+.labkom-branding-fields textarea { resize: vertical; padding: 11px 12px; line-height: 1.55; }
+.labkom-branding-fields :is(input, textarea):focus { border-color: color-mix(in srgb, var(--brand-primary) 65%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand-primary) 13%, transparent) !important; }
+
+.labkom-branding-logo-row { display: flex; align-items: center; gap: 15px; padding: 17px; }
+.labkom-branding-logo {
+  width: 82px;
+  height: 82px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 82px;
+  overflow: hidden;
+  border: 1px solid var(--lab-line-strong);
+  border-radius: 20px;
+  background: #f5f7fb;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
+}
+.labkom-branding-logo img { width: 72px; height: 72px; object-fit: contain; }
+.labkom-branding-logo .labkom-brand-fallback { font-size: 23px; }
+.labkom-branding-logo-row > div:last-child { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.labkom-branding-upload { min-height: 36px; padding: 0 12px; }
+.labkom-branding-upload svg { width: 14px; height: 14px; }
+.labkom-branding-remove { min-height: 36px; padding: 0 12px; border-color: rgba(255, 116, 125, 0.24); color: #ff9ca4; }
+.labkom-branding-logo-row small { width: 100%; color: var(--lab-text-3); font-size: 9px; }
+
+.labkom-branding-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 0 17px 17px; }
+.labkom-branding-colors label > div { height: 42px; display: flex; align-items: center; gap: 10px; padding: 5px 10px 5px 6px; border: 1px solid var(--lab-line-strong); border-radius: 11px; background: rgba(8, 17, 31, 0.78); }
+.labkom-branding-colors input { width: 34px; height: 30px; padding: 0; overflow: hidden; border: 0; border-radius: 8px; background: transparent; }
+.labkom-branding-colors code { color: var(--lab-text-2); font: 9.5px "JetBrains Mono Variable", Consolas, monospace; }
+
+.labkom-branding-error { padding: 11px 13px; border: 1px solid rgba(255, 116, 125, 0.25); border-radius: 12px; background: rgba(255, 116, 125, 0.09); color: #ffabb1; font-size: 10.5px; }
+.labkom-branding-security { display: flex; gap: 11px; padding: 14px; border: 1px solid rgba(69, 214, 155, 0.17); border-radius: 14px; background: rgba(69, 214, 155, 0.06); }
+.labkom-branding-security > svg { width: 19px; height: 19px; flex: 0 0 19px; color: var(--lab-green); }
+.labkom-branding-security strong { color: #b7f2d5; font-size: 10.5px; }
+.labkom-branding-security p { margin: 4px 0 0; color: var(--lab-text-3); font-size: 9.5px; line-height: 1.55; }
+
+.labkom-branding-preview {
+  position: sticky;
+  top: 90px;
+  align-self: start;
+  padding: 15px;
+  border: 1px solid var(--lab-line);
+  border-radius: 17px;
+  background: rgba(12, 23, 41, 0.92);
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.24);
+}
+.labkom-branding-preview-label { display: flex; align-items: center; gap: 7px; color: var(--lab-text-2); font-size: 9px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
+.labkom-branding-preview-label svg { width: 14px; height: 14px; color: var(--preview-accent); }
+.labkom-branding-preview-window { margin-top: 13px; overflow: hidden; border: 1px solid var(--lab-line-strong); border-radius: 15px; background: #07101f; }
+.labkom-branding-preview-top { display: flex; align-items: center; gap: 9px; padding: 12px; border-bottom: 1px solid var(--lab-line); background: linear-gradient(110deg, color-mix(in srgb, var(--preview-primary) 25%, #101d31), #0a1424); }
+.labkom-branding-preview-logo { width: 37px; height: 37px; display: grid; place-items: center; overflow: hidden; flex: 0 0 37px; border-radius: 10px; background: #fff; }
+.labkom-branding-preview-logo img { width: 32px; height: 32px; object-fit: contain; }
+.labkom-branding-preview-logo .labkom-brand-fallback { font-size: 11px; }
+.labkom-branding-preview-top strong,
+.labkom-branding-preview-top span { display: block; }
+.labkom-branding-preview-top strong { color: #fff; font-size: 10.5px; }
+.labkom-branding-preview-top span { margin-top: 2px; color: #8fa1ba; font-size: 8px; }
+.labkom-branding-preview-body { min-height: 245px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; padding: 23px; background: radial-gradient(circle at 90% 90%, color-mix(in srgb, var(--preview-primary) 18%, transparent), transparent 42%); }
+.labkom-branding-preview-body small { color: var(--preview-accent); font-size: 8px; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; }
+.labkom-branding-preview-body h3 { margin: 9px 0 0; color: #fff; font-size: 21px; letter-spacing: -0.045em; }
+.labkom-branding-preview-body p { margin: 7px 0 0; color: #8798b1; font-size: 10px; }
+.labkom-branding-preview-body button { width: 100%; min-height: 38px; margin-top: 24px; border-radius: 10px; background: var(--preview-accent); color: #171207; font-size: 10px; font-weight: 750; }
+.labkom-branding-preview > p { margin: 12px 2px 0; color: var(--lab-text-3); font-size: 9px; line-height: 1.55; }
+
+@media (max-width: 1120px) {
+  .labkom-branding-grid { grid-template-columns: 1fr; }
+  .labkom-branding-preview { position: static; }
+}

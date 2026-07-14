@@ -13,6 +13,7 @@ const {
   getPairingKey,
 } = require('../controllers/adminController');
 const { requireAdmin } = require('../middleware/requireAdmin');
+const { updateBranding } = require('../controllers/brandingController');
 
 // POST /api/admin/verify-password
 router.post('/verify-password', verifyPassword);
@@ -27,5 +28,6 @@ router.post('/device-claims/revoke',   requireAdmin, revokeDeviceClaim);
 router.get('/storage/status',          requireAdmin, storageStatus);
 router.post('/storage/backup',         requireAdmin, createStorageBackup);
 router.get('/pairing-key',             requireAdmin, getPairingKey);
+router.put('/branding',                requireAdmin, updateBranding);
 
 module.exports = router;

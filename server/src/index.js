@@ -37,11 +37,13 @@ const checksRoutes     = require('./routes/checks');
 const screensRoutes    = require('./routes/screens');
 const clientCmdRoutes  = require('./routes/clientcmd');
 const activitiesRoutes = require('./routes/activities');
+const brandingRoutes   = require('./routes/branding');
 const { attachRealtimeHub } = require('./realtimeHub');
 
 const app  = express();
 const PORT = process.env.PORT || 3001;
 const server = http.createServer(app);
+app.disable('x-powered-by');
 
 // =====================
 // Middleware
@@ -52,6 +54,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
   /^http:\/\/127\.0\.0\.1(:\d+)?$/,
   /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
   /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$/,
+  /^http:\/\/172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$/,
 ];
 app.use(cors({
   origin: (origin, callback) => {
@@ -65,6 +68,13 @@ app.use(cors({
 }));
 app.use(express.json({ limit: '2mb' }));          // screenshots butuh ruang lebih
 app.use(express.urlencoded({ extended: true, limit: '2mb' }));
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('X-Frame-Options', 'DENY');
+  if (req.path.startsWith('/api/')) res.setHeader('Cache-Control', 'no-store');
+  next();
+});
 
 // Request logger sederhana
 app.use((req, _res, next) => {
@@ -100,6 +110,7 @@ app.use('/api/checks',     checksRoutes);
 app.use('/api/screens',    screensRoutes);
 app.use('/api/client-cmd', clientCmdRoutes);
 app.use('/api/activities', activitiesRoutes);
+app.use('/api/branding',   brandingRoutes);
 
 // 404 handler
 app.use((_req, res) => {

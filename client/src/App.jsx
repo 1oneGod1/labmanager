@@ -10,7 +10,8 @@ import ChatBubble from './ChatBubble.jsx';
 import AdminScreenShare from './AdminScreenShare.jsx';
 import { ClientSettingsModal, ClientUpdateNotice } from './ClientSettingsPanel.jsx';
 import { apiCall } from './api.js';
-import logoSekolah from '../public/logo-sekolah.png';
+import BrandLogo from './BrandLogo.jsx';
+import { cacheBranding, loadCachedBranding } from './branding.js';
 
 // ── Mode layar ──────────────────────────────────────────────────────
 // 'loading'   → menunggu load konfigurasi server dari storage
@@ -29,7 +30,7 @@ const PREVIEW_SCREEN = import.meta.env.DEV
   ? new URLSearchParams(window.location.search).get('preview')
   : null;
 const PREVIEW_STUDENT = {
-  nis: 'SPH-231412',
+  nis: 'DEMO-231412',
   nama_lengkap: 'Maya Putri',
   kelas: 'X RPL 1',
   pc_name: 'PC-LAB-13',
@@ -91,8 +92,15 @@ export default function App() {
     appVersion: '1.2.0',
   });
   const [updateStatus, setUpdateStatus] = useState({ state: 'idle', currentVersion: '1.2.0' });
+  const [branding, setBranding] = useState(loadCachedBranding);
   const autoSwitchingServerRef = useRef(false);
   const socketRef = useRef(null);
+
+  const applyBranding = useCallback((value) => {
+    const next = cacheBranding(value);
+    setBranding(next);
+    window.electronAPI?.setClientBranding?.(next);
+  }, []);
 
   const persistServerUrl = useCallback((nextUrl) => {
     const normalized = nextUrl?.trim().replace(/\/$/, '');
@@ -134,6 +142,20 @@ export default function App() {
     }
     loadConfig();
   }, [persistServerUrl]);
+
+  useEffect(() => {
+    if (!serverUrl) return;
+    let cancelled = false;
+    apiCall(`${serverUrl}/api/branding`).then((result) => {
+      if (!cancelled && result.ok && result.data?.success) applyBranding(result.data.data);
+    });
+    return () => { cancelled = true; };
+  }, [serverUrl, applyBranding]);
+
+  useEffect(() => {
+    document.title = `${branding.product_name} Siswa · ${branding.school_name}`;
+    window.electronAPI?.setClientBranding?.(branding);
+  }, [branding]);
 
   // ── Ambil nama PC via Electron IPC ──────────────────────────────
   useEffect(() => {
@@ -300,6 +322,8 @@ export default function App() {
         window.electronAPI?.setAttentionMode?.(Boolean(payload.enabled));
       });
 
+      s.on('branding:updated', applyBranding);
+
       s.on('classroom:file-received', async (payload = {}) => {
         const result = window.electronAPI?.saveReceivedFile
           ? await window.electronAPI.saveReceivedFile(payload)
@@ -382,7 +406,7 @@ export default function App() {
       if (socket) socket.disconnect();
       socketRef.current = null;
     };
-  }, [serverUrl, mode, pcName, studentData?.nama_lengkap]);
+  }, [serverUrl, mode, pcName, studentData?.nama_lengkap, applyBranding]);
 
   const submitCollectionFile = async (event) => {
     const file = event.target.files?.[0];
@@ -547,6 +571,7 @@ export default function App() {
         onCheck={handleCheckUpdate}
         onDownload={handleDownloadUpdate}
         onInstall={handleInstallUpdate}
+        branding={branding}
       />
       {[MODE_SETUP, MODE_LOGIN].includes(mode) && (
         <ClientUpdateNotice status={updateStatus} onOpen={() => setSettingsOpen(true)} onInstall={handleInstallUpdate} />
@@ -618,14 +643,13 @@ export default function App() {
     };
 
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans" style={{ '--brand-primary': branding.primary_color, '--brand-accent': branding.accent_color }}>
         {settingsLayer}
         <div className="w-full max-w-md bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl p-10">
           <div className="flex flex-col items-center mb-8">
-            <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-blue-600/30">
-              <Server className="w-10 h-10 text-white" />
-            </div>
+            <BrandLogo branding={branding} className="w-20 h-20 rounded-2xl object-contain p-1 mb-4 shadow-lg" />
             <h1 className="text-2xl font-bold text-white text-center">Konfigurasi Server</h1>
+            <p className="mt-1 text-sm font-semibold" style={{ color: branding.accent_color }}>{branding.product_name} · {branding.school_name}</p>
             <p className="text-slate-400 text-sm text-center mt-2">
               Masukkan alamat IP komputer Admin (tempat aplikasi admin dijalankan)
             </p>
@@ -718,7 +742,7 @@ export default function App() {
             <button
               type="submit"
               disabled={setupChecking}
-              className="w-full py-4 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-600/40 text-white font-semibold rounded-xl transition-all flex items-center justify-center space-x-2"
+              className="student-brand-button w-full py-4 disabled:bg-blue-600/40 text-white font-semibold rounded-xl transition-all flex items-center justify-center space-x-2"
             >
               {setupChecking
                 ? <><RefreshCw className="w-5 h-5 animate-spin" /><span>Menghubungkan...</span></>
@@ -894,7 +918,7 @@ export default function App() {
     <>
       {sharedOverlays}
 
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans" style={{ '--brand-primary': branding.primary_color, '--brand-accent': branding.accent_color }}>
 
         {/* Dialog Admin (overlay di atas semua) */}
         {showAdminDialog && (
@@ -913,7 +937,7 @@ export default function App() {
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-indigo-900 to-slate-900 mix-blend-multiply" />
         <div
           className="w-full h-full bg-cover bg-center"
-          style={{ backgroundImage: `url(${JSON.stringify(loginWallpaper || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop')})` }}
+          style={{ backgroundImage: loginWallpaper ? `url(${JSON.stringify(loginWallpaper)})` : 'none' }}
         />
       </div>
 
@@ -923,7 +947,7 @@ export default function App() {
           <Monitor className="w-8 h-8 text-blue-400" />
           <div>
             <h1 className="text-2xl font-bold tracking-wider">{pcName}</h1>
-            <p className="text-sm text-slate-300">Lab Komputer Jaringan</p>
+            <p className="text-sm text-slate-300">{branding.lab_name}</p>
           </div>
         </div>
         <div className="flex flex-col items-end space-y-1">
@@ -947,14 +971,11 @@ export default function App() {
       <div className="relative z-10 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 rounded-3xl overflow-hidden shadow-2xl bg-white/10 backdrop-blur-md border border-white/20">
 
         {/* Kiri - Jam & Info */}
-        <div className="p-10 flex flex-col justify-between text-white bg-gradient-to-br from-blue-600/50 to-indigo-900/50">
+        <div className="student-brand-panel p-10 flex flex-col justify-between text-white">
           <div>
-            <img
-              src={logoSekolah}
-              alt="Logo Sekolah Palembang Harapan"
-              className="w-24 h-24 object-contain mb-6 drop-shadow-lg"
-            />
-            <h2 className="text-3xl font-bold mb-2">Sistem Manajemen Lab</h2>
+            <BrandLogo branding={branding} className="w-24 h-24 rounded-2xl object-contain p-1 mb-6 drop-shadow-lg" />
+            <p className="mb-2 text-sm font-semibold uppercase tracking-[0.16em]" style={{ color: branding.accent_color }}>{branding.school_name}</p>
+            <h2 className="text-3xl font-bold mb-2">{branding.student_label}</h2>
             <p className="text-blue-200">Silakan login untuk mulai menggunakan komputer ini.</p>
           </div>
           <div className="mt-12">
@@ -1022,10 +1043,10 @@ export default function App() {
             <button
               type="submit"
               disabled={isLoading || !serverOnline}
-              className={`w-full py-4 rounded-xl text-white font-semibold text-lg transition-all shadow-lg ${
+              className={`student-brand-button w-full py-4 rounded-xl text-white font-semibold text-lg transition-all shadow-lg ${
                 isLoading || !serverOnline
                   ? 'bg-blue-600/40 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-500 hover:shadow-blue-500/25 active:scale-[0.98]'
+                  : 'active:scale-[0.98]'
               }`}
             >
               {isLoading ? (
@@ -1045,7 +1066,7 @@ export default function App() {
           </form>
 
           <div className="mt-8 text-center text-sm text-slate-500">
-            <p>Butuh bantuan? Silakan hubungi Teknisi Lab.</p>
+            <p>{branding.support_text}</p>
             <p className="mt-1">Versi {clientSettings.appVersion || updateStatus.currentVersion || '-'}</p>
           </div>
         </div>

@@ -22,6 +22,10 @@ tmp/
 firebase-service-account.json
 *-firebase-adminsdk-*.json
 serviceAccountKey.json
+*.pem
+*.key
+*.p12
+*.pfx
 
 # Logs
 *.log
@@ -50,8 +54,14 @@ coverage/
 
 # Local database and backups
 server/data/
+*.db
 *.db-wal
 *.db-shm
+*.sqlite
+*.sqlite3
+server.env
+client.settings.json
+device.json
 
 # Misc
 *.tmp

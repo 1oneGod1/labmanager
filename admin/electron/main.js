@@ -5,7 +5,7 @@
 //  3. Expose info IP LAN ke renderer via IPC
 //  4. Auto-update via electron-updater (GitHub Releases / generic server)
 
-const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, session } = require('electron');
 const path             = require('path');
 const os               = require('os');
 const http             = require('http');
@@ -406,7 +406,9 @@ function createWindow() {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration:  false,
+      sandbox:          true,
       devTools:         allowDevTools,
+      spellcheck:       false,
     },
   });
 
@@ -432,6 +434,10 @@ function createWindow() {
       if (parsed.protocol === 'http:' || parsed.protocol === 'https:') shell.openExternal(url);
     } catch {}
     return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const allowed = url.startsWith('file://') || (isDev && url.startsWith('http://localhost:5174'));
+    if (!allowed) event.preventDefault();
   });
 
   mainWindow.on('close', (e) => {
@@ -680,6 +686,8 @@ ipcMain.handle('export-reports-pdf', async () => {
 });
 
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
   await startServer();   // ← Jalankan/detect backend terlebih dahulu
   startDiscoveryBroadcast(); // ← Mulai broadcast UDP agar client bisa temukan server
   createWindow();

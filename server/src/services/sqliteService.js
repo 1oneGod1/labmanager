@@ -11,6 +11,7 @@ const COLLECTIONS = {
   activities: 'activity_logs',
   chat: 'chat_messages',
   audit: 'admin_audit_logs',
+  branding: 'app_branding',
 };
 
 const dataDir = path.resolve(
@@ -495,6 +496,19 @@ const controlService = {
   },
 };
 
+const brandingService = {
+  async get() {
+    return store.get(COLLECTIONS.branding, 'global');
+  },
+
+  async update(branding) {
+    return store.set(COLLECTIONS.branding, 'global', {
+      ...branding,
+      updated_at: timestamp(),
+    });
+  },
+};
+
 function activityRows() {
   return store.list(COLLECTIONS.activities);
 }
@@ -775,4 +789,5 @@ module.exports = {
   activities: activitiesService,
   chat: chatService,
   audit: auditService,
+  branding: brandingService,
 };

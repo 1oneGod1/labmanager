@@ -19,6 +19,9 @@ import AttentionModeButton from './components/AttentionModeButton.jsx';
 import FilesWorkspace from './components/FilesWorkspace.jsx';
 import RegisterWorkspace from './components/RegisterWorkspace.jsx';
 import ReportsWorkspace from './components/ReportsWorkspace.jsx';
+import BrandingWorkspace from './components/BrandingWorkspace.jsx';
+import BrandLogo from './components/BrandLogo.jsx';
+import { DEFAULT_BRANDING, normalizeBranding } from './branding.js';
 
 // Di Electron production, window load dari file:// sehingga fetch relatif gagal.
 // Deteksi protokol: file:// → pakai absolute URL ke server lokal.
@@ -52,7 +55,7 @@ const DEMO_PCS = DEMO_NAMES.map((name, index) => {
     student: status === 'offline' ? null : {
       name,
       nama_lengkap: name,
-      nis: `SPH-23${1400 + index}`,
+      nis: `DEMO-23${1400 + index}`,
       kelas: 'X RPL 1',
     },
   };
@@ -108,6 +111,7 @@ const ADMIN_NAV_ITEMS = [
   { id: 'history', label: 'Laporan', title: 'Laporan Praktikum', description: 'Ringkasan sesi dan aktivitas lab', icon: History },
   { id: 'students', label: 'Siswa', title: 'Data Siswa', description: 'Kelola akun dan identitas siswa', icon: Users },
   { id: 'activities', label: 'Aktivitas', title: 'Aktivitas Siswa', description: 'Tinjau aplikasi dan situs yang digunakan', icon: Activity },
+  { id: 'branding', label: 'Identitas', title: 'Identitas Aplikasi', description: 'Atur logo dan nama untuk Admin serta Siswa', icon: ImageIcon },
   { id: 'server', label: 'Server', title: 'Server & Penyimpanan', description: 'Status LAN, pairing, database, dan backup', icon: Server },
 ];
 
@@ -288,10 +292,42 @@ export default function AdminDashboard() {
   const [storageLoading, setStorageLoading] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [pairingKey, setPairingKey] = useState('');
+  const [branding, setBranding] = useState(DEFAULT_BRANDING);
 
   // Toast
   const [toast, setToast] = useState(null);
   const showToast = (message, type = 'success') => setToast({ message, type });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API}/api/branding`)
+      .then((response) => response.json())
+      .then((result) => {
+        if (!cancelled && result?.success && result.data) setBranding(normalizeBranding(result.data));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    document.title = `${branding.product_name} Admin · ${branding.school_name}`;
+  }, [branding.product_name, branding.school_name]);
+
+  const saveBranding = async (nextBranding) => {
+    try {
+      const result = await apiFetch('/api/admin/branding', {
+        method: 'PUT',
+        body: JSON.stringify(nextBranding),
+      });
+      if (result?.success && result.data) {
+        setBranding(normalizeBranding(result.data));
+        showToast('Identitas Admin dan Siswa berhasil diperbarui.');
+      }
+      return result;
+    } catch {
+      return { success: false, message: 'Identitas aplikasi tidak dapat disimpan.' };
+    }
+  };
 
   const handleAdminLogin = async (e) => {
     e.preventDefault();
@@ -2896,7 +2932,7 @@ export default function AdminDashboard() {
             <section className="border border-[var(--lab-line)] rounded-xl overflow-hidden bg-[var(--lab-panel)]">
               <header className="px-4 py-3 border-b border-[var(--lab-line)] text-xs font-bold">Pratinjau siswa</header>
               <div className="m-3 aspect-video rounded-lg border border-[var(--lab-line)] bg-[#080e19] grid place-items-center text-center p-5">
-                <div><AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" /><p className="text-xs font-bold">Akses diblokir</p><p className="text-[9px] text-[var(--lab-text-3)] mt-1">Diblokir oleh kebijakan Lab Komputer SPH</p></div>
+                <div><AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" /><p className="text-xs font-bold">Akses diblokir</p><p className="text-[9px] text-[var(--lab-text-3)] mt-1">Diblokir oleh kebijakan {branding.lab_name}</p></div>
               </div>
             </section>
             <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)]">
@@ -3135,20 +3171,26 @@ export default function AdminDashboard() {
     if (activeTab === 'activities') return <div className="labkom-legacy-surface p-4"><ActivityMonitor serverUrl={API} socket={realtimeSocket} /></div>;
     if (activeTab === 'students') return <div className="labkom-legacy-surface p-4">{renderStudents()}</div>;
     if (activeTab === 'history') return <ReportsWorkspace pcs={pcs} checks={checks} history={history} topApps={reportData.topApps} topSites={reportData.topSites} timeline={reportData.timeline} demo={DEMO_MODE} onRefresh={fetchReportData} onToast={showToast} />;
+    if (activeTab === 'branding') return <BrandingWorkspace branding={branding} onSave={saveBranding} />;
     if (activeTab === 'server') return <div className="labkom-legacy-surface p-4">{renderServer()}</div>;
     return renderDesignMonitorView();
   };
 
   const activeNavigation = ADMIN_NAV_ITEMS.find((item) => item.id === activeTab) || ADMIN_NAV_ITEMS[0];
   const serverOnline = DEMO_MODE || serverInfo?.status === 'online';
+  const brandingStyle = {
+    '--brand-primary': branding.primary_color,
+    '--brand-accent': branding.accent_color,
+    '--lab-yellow': branding.accent_color,
+  };
 
   if (authLoading) {
     return (
-      <div className="labkom-login is-loading">
+      <div className="labkom-login is-loading" style={brandingStyle}>
         <div className="labkom-loading-card">
-          <div className="labkom-loading-logo"><img src="./logo-sekolah.png" alt="Logo SPH" /></div>
+          <BrandLogo branding={branding} className="labkom-loading-logo" />
           <div>
-            <strong>LabKom Admin</strong>
+            <strong>{branding.product_name} Admin</strong>
             <span>Memverifikasi akses dan menyiapkan server lokal...</span>
           </div>
           <Loader2 className="animate-spin" />
@@ -3159,12 +3201,12 @@ export default function AdminDashboard() {
 
   if (!authReady) {
     return (
-      <div className="labkom-login">
+      <div className="labkom-login" style={brandingStyle}>
         <div className="labkom-login-shell">
           <section className="labkom-login-visual">
             <div className="labkom-login-brand">
-              <div className="labkom-login-logo"><img src="./logo-sekolah.png" alt="Logo Sekolah Palembang Harapan" /></div>
-              <div><strong>LABKOM</strong><span>ADMIN CONSOLE</span></div>
+              <BrandLogo branding={branding} className="labkom-login-logo" />
+              <div><strong>{branding.product_name}</strong><span>{branding.admin_label}</span></div>
             </div>
             <div className="labkom-login-message">
               <span className="labkom-login-kicker"><ShieldCheck /> Pusat kendali laboratorium</span>
@@ -3176,7 +3218,7 @@ export default function AdminDashboard() {
               <div><Wifi /><span><strong>Kontrol LAN</strong><small>Terhubung tanpa layanan cloud</small></span></div>
               <div><Archive /><span><strong>Backup Otomatis</strong><small>Cadangan dibuat terjadwal</small></span></div>
             </div>
-            <p className="labkom-login-school">Sekolah Palembang Harapan</p>
+            <p className="labkom-login-school">{branding.school_name} · {branding.lab_name}</p>
           </section>
 
           <form onSubmit={handleAdminLogin} className="labkom-login-card">
@@ -3218,12 +3260,12 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="labkom-admin">
+    <div className="labkom-admin" style={brandingStyle}>
       <div className="labkom-shell">
         <header className="labkom-header">
           <div className="labkom-brand">
-            <div className="labkom-logo"><img src="./logo-sekolah.png" alt="Logo SPH" /></div>
-            <div><strong>LabKom Admin</strong><span>Sekolah Palembang Harapan</span></div>
+            <BrandLogo branding={branding} className="labkom-logo" />
+            <div><strong>{branding.product_name} Admin</strong><span>{branding.school_name}</span></div>
           </div>
           <div className="labkom-context">
             <span>PUSAT KENDALI</span>
@@ -3269,8 +3311,8 @@ export default function AdminDashboard() {
       {/* SIDEBAR */}
       <aside className="hidden">
         <div className="p-6 border-b border-slate-800 flex items-center space-x-3">
-          <img src="./logo-sekolah.png" alt="Logo SPH" className="w-10 h-10 object-contain rounded-lg" onError={(e) => { e.target.style.display = 'none'; }} />
-          <div><h1 className="text-xl font-bold tracking-wide">SPH LabKom</h1><p className="text-xs text-slate-400">Admin Dashboard</p></div>
+          <BrandLogo branding={branding} className="w-10 h-10 object-contain rounded-lg" />
+          <div><h1 className="text-xl font-bold tracking-wide">{branding.product_name}</h1><p className="text-xs text-slate-400">{branding.admin_label}</p></div>
         </div>
 
         <nav className="flex-1 p-4 space-y-2">

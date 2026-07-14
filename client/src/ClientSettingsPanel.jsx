@@ -101,7 +101,7 @@ function UpdateStatus({ status = {}, autoUpdate, onCheck, onDownload, onInstall 
   );
 }
 
-export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStatus, onClose, onSave, onCheck, onDownload, onInstall }) {
+export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStatus, onClose, onSave, onCheck, onDownload, onInstall, branding = {} }) {
   const [draft, setDraft] = useState({ autoUpdate: true, openAtLogin: true, notifyUpdates: true, serverUrl: '', registrationKey: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -136,7 +136,7 @@ export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStat
           <div className="flex items-center gap-3">
             <span className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-600 text-white"><Settings className="h-5 w-5" /></span>
             <div>
-              <h2 className="text-xl font-bold">Pengaturan LabKom Siswa</h2>
+              <h2 className="text-xl font-bold">Pengaturan {branding.product_name || 'LabKom'} Siswa</h2>
               <p className="mt-0.5 text-xs text-slate-400">PC ini · Versi {settings.appVersion || updateStatus?.currentVersion || '-'}</p>
             </div>
           </div>

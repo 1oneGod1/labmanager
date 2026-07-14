@@ -135,6 +135,38 @@ async function main() {
     }
 
     const authHeaders = { Authorization: `Bearer ${valid.body.token}` };
+    const branding = await requestJson(port, '/api/admin/branding', {
+      method: 'PUT',
+      headers: authHeaders,
+      body: {
+        product_name: 'EduLab Verify',
+        school_name: 'Sekolah Verifikasi',
+        lab_name: 'Lab Verifikasi',
+        admin_label: 'Pusat Kendali',
+        student_label: 'Portal Siswa',
+        support_text: 'Hubungi petugas.',
+        primary_color: '#123456',
+        accent_color: '#fedcba',
+      },
+    });
+    if (branding.status !== 200 || branding.body?.data?.school_name !== 'Sekolah Verifikasi') {
+      throw new Error(`White-label paket gagal disimpan: HTTP ${branding.status}`);
+    }
+
+    const publicBranding = await requestJson(port, '/api/branding');
+    if (publicBranding.status !== 200 || publicBranding.body?.data?.product_name !== 'EduLab Verify') {
+      throw new Error(`White-label paket gagal dibaca: HTTP ${publicBranding.status}`);
+    }
+
+    const unsafeBranding = await requestJson(port, '/api/admin/branding', {
+      method: 'PUT',
+      headers: authHeaders,
+      body: { logo_data_url: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=' },
+    });
+    if (unsafeBranding.status !== 400 || unsafeBranding.body?.success !== false) {
+      throw new Error(`Logo SVG tidak ditolak: HTTP ${unsafeBranding.status}`);
+    }
+
     const created = await requestJson(port, '/api/students', {
       method: 'POST',
       headers: authHeaders,
@@ -189,7 +221,7 @@ async function main() {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 
-  console.log('Packaged backend startup, SQLite CRUD, pairing, student login, backup, and admin authentication: PASS');
+  console.log('Packaged backend startup, white-label, SQLite CRUD, pairing, student login, backup, and admin authentication: PASS');
 }
 
 main().catch((error) => {

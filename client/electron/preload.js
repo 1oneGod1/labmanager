@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Pengaturan PC siswa dan pembaruan aplikasi.
   getClientSettings:  ()       => ipcRenderer.invoke('get-client-settings'),
   saveClientSettings: (data)   => ipcRenderer.invoke('save-client-settings', data),
+  setClientBranding:  (data)   => ipcRenderer.send('set-client-branding', data),
   checkForUpdates:    ()       => ipcRenderer.invoke('check-client-update'),
   downloadUpdate:     ()       => ipcRenderer.invoke('download-client-update'),
   installUpdate:      ()       => ipcRenderer.send('install-client-update'),

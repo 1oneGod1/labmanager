@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification, safeStorage, session } = require('electron');
 const os              = require('os');
 const path            = require('path');
 const fs              = require('fs');
@@ -88,6 +88,12 @@ const DEFAULT_CLIENT_SETTINGS = Object.freeze({
 let clientSettings = { ...DEFAULT_CLIENT_SETTINGS };
 let updateCheckTimer = null;
 let latestUpdateStatus = { state: 'idle', currentVersion: app.getVersion() };
+let clientBranding = {
+  product_name: 'LabKom',
+  school_name: 'Nama Sekolah',
+  lab_name: 'Laboratorium Komputer',
+  student_label: 'Sistem Manajemen Lab',
+};
 
 function getClientSettingsPath() {
   return path.join(app.getPath('userData'), 'client.settings.json');
@@ -102,10 +108,47 @@ function sanitizeClientSettings(value = {}) {
   };
 }
 
+function protectLocalSecret(value) {
+  const normalized = String(value || '');
+  if (!normalized) return '';
+  if (safeStorage.isEncryptionAvailable()) {
+    return safeStorage.encryptString(normalized).toString('base64');
+  }
+  if (isDev) return `dev:${Buffer.from(normalized, 'utf8').toString('base64')}`;
+  throw new Error('Enkripsi kredensial Windows tidak tersedia.');
+}
+
+function unprotectLocalSecret(value) {
+  const protectedValue = String(value || '');
+  if (!protectedValue) return '';
+  try {
+    if (protectedValue.startsWith('dev:')) {
+      return isDev ? Buffer.from(protectedValue.slice(4), 'base64').toString('utf8') : '';
+    }
+    if (!safeStorage.isEncryptionAvailable()) return '';
+    return safeStorage.decryptString(Buffer.from(protectedValue, 'base64'));
+  } catch (error) {
+    log.warn('[SECURITY] Kredensial lokal tidak dapat didekripsi:', error.message);
+    return '';
+  }
+}
+
 function loadClientSettings() {
   try {
     const stored = JSON.parse(fs.readFileSync(getClientSettingsPath(), 'utf-8'));
-    return sanitizeClientSettings({ ...DEFAULT_CLIENT_SETTINGS, ...stored });
+    const settings = sanitizeClientSettings({
+      ...DEFAULT_CLIENT_SETTINGS,
+      ...stored,
+      registrationKey: stored.registrationKeyProtected
+        ? unprotectLocalSecret(stored.registrationKeyProtected)
+        : stored.registrationKey,
+    });
+    if (stored.registrationKey && !stored.registrationKeyProtected) {
+      try { saveClientSettings(settings); } catch (error) {
+        log.warn('[SECURITY] Migrasi kunci pairing lama gagal:', error.message);
+      }
+    }
+    return settings;
   } catch {
     return { ...DEFAULT_CLIENT_SETTINGS };
   }
@@ -113,9 +156,32 @@ function loadClientSettings() {
 
 function saveClientSettings(settings) {
   const safeSettings = sanitizeClientSettings(settings);
-  fs.writeFileSync(getClientSettingsPath(), JSON.stringify(safeSettings, null, 2), 'utf-8');
+  const diskSettings = {
+    autoUpdate: safeSettings.autoUpdate,
+    openAtLogin: safeSettings.openAtLogin,
+    notifyUpdates: safeSettings.notifyUpdates,
+    registrationKeyProtected: protectLocalSecret(safeSettings.registrationKey),
+  };
+  fs.writeFileSync(getClientSettingsPath(), JSON.stringify(diskSettings, null, 2), 'utf-8');
   clientSettings = safeSettings;
   return safeSettings;
+}
+
+function sanitizeClientBranding(value = {}) {
+  const text = (input, fallback, max = 80) => String(input || fallback).replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, max) || fallback;
+  return {
+    product_name: text(value.product_name, 'LabKom', 48),
+    school_name: text(value.school_name, 'Nama Sekolah', 100),
+    lab_name: text(value.lab_name, 'Laboratorium Komputer', 100),
+    student_label: text(value.student_label, 'Sistem Manajemen Lab', 80),
+  };
+}
+
+function applyClientBranding(value) {
+  clientBranding = sanitizeClientBranding(value);
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setTitle(`${clientBranding.product_name} Siswa — ${clientBranding.school_name}`);
+  }
 }
 
 function applyClientSettings(settings = clientSettings) {
@@ -164,7 +230,7 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
   log.info('[CLIENT UPDATE] Pembaruan tersedia:', info.version);
   sendClientUpdateStatus({ state: 'available', version: info.version, releaseNotes: info.releaseNotes });
-  showUpdateNotification('Pembaruan LabKom Siswa tersedia', `Versi ${info.version} sedang disiapkan.`);
+  showUpdateNotification(`Pembaruan ${clientBranding.product_name} Siswa tersedia`, `Versi ${info.version} sedang disiapkan.`);
 });
 autoUpdater.on('update-not-available', (info) => {
   log.info('[CLIENT UPDATE] Sudah versi terbaru:', info.version);
@@ -181,7 +247,7 @@ autoUpdater.on('download-progress', (progress) => {
 autoUpdater.on('update-downloaded', (info) => {
   log.info('[CLIENT UPDATE] Download selesai, siap dipasang:', info.version);
   sendClientUpdateStatus({ state: 'downloaded', version: info.version, percent: 100 });
-  showUpdateNotification('Pembaruan siap dipasang', `LabKom Siswa ${info.version} akan dipasang saat aplikasi ditutup.`);
+  showUpdateNotification('Pembaruan siap dipasang', `${clientBranding.product_name} Siswa ${info.version} akan dipasang saat aplikasi ditutup.`);
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-downloaded');
 });
 autoUpdater.on('error', (err) => {
@@ -246,11 +312,24 @@ function getOrCreateDeviceId() {
   return id;
 }
 function getStoredClientToken() {
-  return loadDeviceInfo().client_token || null;
+  const info = loadDeviceInfo();
+  if (info.client_token_protected) return unprotectLocalSecret(info.client_token_protected) || null;
+  if (info.client_token) {
+    const legacyToken = String(info.client_token);
+    try {
+      setStoredClientToken(legacyToken);
+    } catch (error) {
+      log.warn('[SECURITY] Migrasi token perangkat lama gagal:', error.message);
+    }
+    return legacyToken;
+  }
+  return null;
 }
 function setStoredClientToken(token) {
   const info = loadDeviceInfo();
-  info.client_token = token;
+  delete info.client_token;
+  if (token) info.client_token_protected = protectLocalSecret(token);
+  else delete info.client_token_protected;
   saveDeviceInfo(info);
 }
 
@@ -283,7 +362,13 @@ function requestDeviceToken(serverUrl) {
         try {
           const json = JSON.parse(buf);
           if (json?.success && json.data?.token) {
-            setStoredClientToken(json.data.token);
+            try {
+              setStoredClientToken(json.data.token);
+            } catch (error) {
+              // Token tetap dapat dipakai untuk sesi berjalan, tetapi tidak pernah
+              // diturunkan menjadi penyimpanan teks biasa di production.
+              log.warn('[SECURITY] Token perangkat tidak dapat disimpan aman:', error.message);
+            }
             resolve(json.data.token);
           } else {
             log.warn('[DEVICE-AUTH] Register ditolak:', json?.message);
@@ -758,6 +843,7 @@ function createWindow() {
       preload:           path.join(__dirname, 'preload.js'),
       contextIsolation:  true,
       nodeIntegration:   false,
+      sandbox:           true,
       devTools:          allowDevTools,
       spellcheck:        false,
     },
@@ -979,6 +1065,10 @@ ipcMain.handle('get-client-settings', () => {
     updateStatus: latestUpdateStatus,
     isPackaged: app.isPackaged,
   };
+});
+
+ipcMain.on('set-client-branding', (_event, value) => {
+  applyClientBranding(value);
 });
 
 ipcMain.handle('save-client-settings', async (_event, payload = {}) => {
@@ -1922,7 +2012,14 @@ function installWatchdog() {
       `  try { $cfg = Get-Content $cfgPath -Raw | ConvertFrom-Json; $serverUrl = $cfg.serverUrl } catch {}`,
       `}`,
       `if (Test-Path $devicePath) {`,
-      `  try { $device = Get-Content $devicePath -Raw | ConvertFrom-Json; $clientToken = $device.client_token } catch {}`,
+      `  try {`,
+      `    $device = Get-Content $devicePath -Raw | ConvertFrom-Json`,
+      `    if ($device.client_token_protected) {`,
+      `      $bytes = [Convert]::FromBase64String([string]$device.client_token_protected)`,
+      `      $clear = [Security.Cryptography.ProtectedData]::Unprotect($bytes, $null, [Security.Cryptography.DataProtectionScope]::CurrentUser)`,
+      `      $clientToken = [Text.Encoding]::UTF8.GetString($clear)`,
+      `    }`,
+      `  } catch {}`,
       `}`,
       '',
       `$cmd = 'none'`,
@@ -2101,6 +2198,8 @@ ipcMain.handle('api-request', async (_event, url, options = {}) => {
 
 });
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  session.defaultSession.setPermissionCheckHandler(() => false);
   await restoreSystemProxy().catch(() => false);
   clientSettings = loadClientSettings();
   applyClientSettings(clientSettings);

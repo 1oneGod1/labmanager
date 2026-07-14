@@ -38,6 +38,15 @@
     "productName": "LabKom Admin - Dashboard",
     "artifactName": "LabKom-Admin-Dashboard-Setup-${version}.${ext}",
     "asar": true,
+    "electronFuses": {
+      "runAsNode": true,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "grantFileProtocolExtraPrivileges": false
+    },
     "files": [
       "dist/**/*",
       "electron/**/*"
@@ -55,7 +64,7 @@
           "!*firebase-adminsdk*.json",
           "!serviceAccountKey.json",
           "!.git/**",
-          "!node_modules/nodemon/**",
+          "!node_modules/**",
           "!test/**",
           "!*.log"
         ]
@@ -64,7 +73,8 @@
         "from": "../server/node_modules",
         "to": "server/node_modules",
         "filter": [
-          "**/*"
+          "**/*",
+          "!nodemon/**"
         ]
       }
     ],

@@ -24,3 +24,18 @@ html, body {
 #root {
   background: transparent;
 }
+
+.student-brand-panel {
+  background:
+    radial-gradient(circle at 18% 18%, color-mix(in srgb, var(--brand-accent, #f8c84f) 26%, transparent), transparent 38%),
+    linear-gradient(145deg, color-mix(in srgb, var(--brand-primary, #2563eb) 82%, #0f172a), #172554 100%);
+}
+
+.student-brand-button:not(:disabled) {
+  background: var(--brand-primary, #2563eb);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--brand-primary, #2563eb) 30%, transparent);
+}
+
+.student-brand-button:not(:disabled):hover {
+  filter: brightness(1.12);
+}
