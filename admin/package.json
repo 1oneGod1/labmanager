@@ -1,6 +1,6 @@
 {
   "name": "labkom-admin",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Dashboard administrasi dan pemantauan laboratorium komputer",
   "author": "LabKom",
   "type": "module",
@@ -12,6 +12,8 @@
     "electron:build": "set \"ELECTRON_RUN_AS_NODE=\" && npm.cmd run build:react && electron-builder"
   },
   "dependencies": {
+    "@fontsource/ibm-plex-mono": "^5.1.1",
+    "@fontsource/ibm-plex-sans": "^5.1.1",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
     "lucide-react": "^0.469.0",
@@ -77,8 +79,10 @@
       {
         "provider": "github",
         "owner": "1oneGod1",
-        "repo": "labkomAPP",
-        "private": false
+        "repo": "labmanager",
+        "private": false,
+        "channel": "admin",
+        "releaseType": "release"
       }
     ]
   }

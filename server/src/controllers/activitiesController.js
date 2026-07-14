@@ -121,8 +121,8 @@ exports.cleanupOldActivities = async (req, res) => {
 // GET /api/activities/top-sites - Get most visited sites
 exports.getTopSites = async (req, res) => {
   try {
-    const { student_id, limit = 10 } = req.query;
-    const topSites = await firebaseService.activities.getTopSites({ student_id, limit });
+    const { student_id, limit = 10, date_from, date_to } = req.query;
+    const topSites = await firebaseService.activities.getTopSites({ student_id, limit, date_from, date_to });
     res.json({ success: true, top_sites: topSites });
   } catch (error) {
     console.error('[API] Error fetching top sites:', error);
@@ -133,11 +133,23 @@ exports.getTopSites = async (req, res) => {
 // GET /api/activities/top-apps - Get most used applications
 exports.getTopApps = async (req, res) => {
   try {
-    const { student_id, limit = 10 } = req.query;
-    const topApps = await firebaseService.activities.getTopApps({ student_id, limit });
+    const { student_id, limit = 10, date_from, date_to } = req.query;
+    const topApps = await firebaseService.activities.getTopApps({ student_id, limit, date_from, date_to });
     res.json({ success: true, top_apps: topApps });
   } catch (error) {
     console.error('[API] Error fetching top apps:', error);
     res.status(500).json({ error: 'Failed to fetch top apps' });
+  }
+};
+
+// GET /api/activities/timeline - Get activity counts for the report chart
+exports.getActivityTimeline = async (req, res) => {
+  try {
+    const { date_from, date_to, bucket_count = 7 } = req.query;
+    const timeline = await firebaseService.activities.getTimeline({ date_from, date_to, bucket_count });
+    res.json({ success: true, timeline });
+  } catch (error) {
+    console.error('[API] Error fetching activity timeline:', error);
+    res.status(500).json({ error: 'Failed to fetch activity timeline' });
   }
 };

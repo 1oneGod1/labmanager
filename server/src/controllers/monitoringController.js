@@ -237,6 +237,14 @@ async function forceLogoutPc(req, res) {
 
   try {
     const affected = await firebaseService.sessions.forceLogoutByPcName(pc_name);
+    const normalizedPcName = normalizePcName(pc_name);
+    const io = req.app.get('realtimeHub');
+    if (normalizedPcName) {
+      io?.to(`client:${normalizedPcName}`).emit('session:force-logout', {
+        reason: 'Sesi dihentikan oleh Admin.',
+        requested_at: Date.now(),
+      });
+    }
 
     return res.json({
       success: true,
@@ -244,6 +252,7 @@ async function forceLogoutPc(req, res) {
         ? `Sesi di ${pc_name} berhasil dihentikan.`
         : `Tidak ada sesi aktif di ${pc_name}.`,
       affected,
+      notified: Boolean(normalizedPcName),
     });
   } catch (err) {
     console.error('[MONITORING] forceLogoutPc error:', err);
@@ -251,13 +260,20 @@ async function forceLogoutPc(req, res) {
   }
 }
 
-async function forceLogoutAll(_req, res) {
+async function forceLogoutAll(req, res) {
   try {
     const affected = await firebaseService.sessions.forceLogoutAll();
+    const io = req.app.get('realtimeHub');
+    const notified = io?.sockets?.adapter?.rooms?.get('clients-renderer')?.size || 0;
+    io?.to('clients-renderer').emit('session:force-logout', {
+      reason: 'Semua sesi dihentikan oleh Admin.',
+      requested_at: Date.now(),
+    });
     return res.json({
       success: true,
       message: `${affected} sesi aktif dihentikan.`,
       affected,
+      notified,
     });
   } catch (err) {
     console.error('[MONITORING] forceLogoutAll error:', err);

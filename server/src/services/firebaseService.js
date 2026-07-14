@@ -48,6 +48,21 @@ function docToObject(doc) {
   return { id: doc.id, ...doc.data() };
 }
 
+function filterActivityDocsByDate(docs, dateFrom, dateTo) {
+  const from = dateFrom ? new Date(dateFrom) : null;
+  const to = dateTo ? new Date(dateTo) : null;
+  const validFrom = from && !Number.isNaN(from.getTime()) ? from : null;
+  const validTo = to && !Number.isNaN(to.getTime()) ? to : null;
+
+  return docs.filter((doc) => {
+    const at = toDate(doc.activity_at);
+    if (!at || Number.isNaN(at.getTime())) return false;
+    if (validFrom && at < validFrom) return false;
+    if (validTo && at > validTo) return false;
+    return true;
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // STUDENTS COLLECTION
 // ═══════════════════════════════════════════════════════════════════════════
@@ -677,6 +692,12 @@ const checksService = {
       cpu_note: checkData.cpu_note || null,
       monitor_status: checkData.monitor_status || null,
       monitor_note: checkData.monitor_note || null,
+      keyboard_status: checkData.keyboard_status || null,
+      keyboard_note: checkData.keyboard_note || null,
+      mouse_status: checkData.mouse_status || null,
+      mouse_note: checkData.mouse_note || null,
+      headset_status: checkData.headset_status || null,
+      headset_note: checkData.headset_note || null,
       desk_status: checkData.desk_status || null,
       desk_note: checkData.desk_note || null,
       // Post-check items
@@ -732,7 +753,7 @@ const checksService = {
     const paginated = allDocs.slice(offset, offset + parseInt(limit));
 
     const statusKeys = [
-      'cpu_status', 'monitor_status', 'desk_status',
+      'cpu_status', 'monitor_status', 'keyboard_status', 'mouse_status', 'headset_status', 'desk_status',
       'hw_status', 'cleanliness_status', 'account_status',
       'system_status', 'file_status',
     ];
@@ -771,7 +792,7 @@ const checksService = {
     const docs = snapshot.docs.map(docToObject);
 
     const statusKeys = [
-      'cpu_status', 'monitor_status', 'desk_status',
+      'cpu_status', 'monitor_status', 'keyboard_status', 'mouse_status', 'headset_status', 'desk_status',
       'hw_status', 'cleanliness_status', 'account_status',
       'system_status', 'file_status',
     ];
@@ -892,6 +913,7 @@ const activitiesService = {
       url: activityData.url || null,
       url_domain: activityData.url_domain || null,
       page_title: activityData.page_title || null,
+      blocked: activityData.blocked === true,
       running_apps: activityData.running_apps || null,
       duration_seconds: activityData.duration_seconds || 0,
       activity_at: activityData.activity_at ? toTimestamp(activityData.activity_at) : timestamp(),
@@ -994,7 +1016,7 @@ const activitiesService = {
   /**
    * Get top visited sites
    */
-  async getTopSites({ student_id, limit = 10 } = {}) {
+  async getTopSites({ student_id, limit = 10, date_from, date_to } = {}) {
     if (!isFirestoreAvailable()) throw new Error('Firestore not available');
 
     let query = db.collection('activity_logs')
@@ -1005,16 +1027,20 @@ const activitiesService = {
     }
 
     const snapshot = await query.get();
-    const docs = snapshot.docs.map(d => d.data());
+    const docs = filterActivityDocsByDate(snapshot.docs.map(d => d.data()), date_from, date_to);
 
     // Group by url_domain
     const domains = {};
     for (const doc of docs) {
       if (!doc.url_domain) continue;
       if (!domains[doc.url_domain]) {
-        domains[doc.url_domain] = { url_domain: doc.url_domain, visit_count: 0, last_visit: null };
+        domains[doc.url_domain] = { url_domain: doc.url_domain, visit_count: 0, blocked_attempts: 0, blocked: false, last_visit: null };
       }
       domains[doc.url_domain].visit_count++;
+      if (doc.blocked === true) {
+        domains[doc.url_domain].blocked = true;
+        domains[doc.url_domain].blocked_attempts++;
+      }
       const at = toDate(doc.activity_at);
       if (!domains[doc.url_domain].last_visit || (at && at > domains[doc.url_domain].last_visit)) {
         domains[doc.url_domain].last_visit = at;
@@ -1029,7 +1055,7 @@ const activitiesService = {
   /**
    * Get top used apps
    */
-  async getTopApps({ student_id, limit = 10 } = {}) {
+  async getTopApps({ student_id, limit = 10, date_from, date_to } = {}) {
     if (!isFirestoreAvailable()) throw new Error('Firestore not available');
 
     let query = db.collection('activity_logs')
@@ -1040,7 +1066,7 @@ const activitiesService = {
     }
 
     const snapshot = await query.get();
-    const docs = snapshot.docs.map(d => d.data());
+    const docs = filterActivityDocsByDate(snapshot.docs.map(d => d.data()), date_from, date_to);
 
     // Group by process_name
     const apps = {};
@@ -1060,6 +1086,38 @@ const activitiesService = {
     return Object.values(apps)
       .sort((a, b) => b.usage_count - a.usage_count)
       .slice(0, parseInt(limit));
+  },
+
+  /**
+   * Aggregate activity counts into evenly sized time buckets for reports.
+   */
+  async getTimeline({ date_from, date_to, bucket_count = 7 } = {}) {
+    if (!isFirestoreAvailable()) throw new Error('Firestore not available');
+
+    const end = date_to ? new Date(date_to) : new Date();
+    const start = date_from ? new Date(date_from) : new Date(end.getTime() - (24 * 60 * 60 * 1000));
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+      throw new Error('Invalid activity timeline date range');
+    }
+
+    const bucketCount = Math.min(24, Math.max(2, Number.parseInt(bucket_count, 10) || 7));
+    const span = end.getTime() - start.getTime();
+    const bucketMs = span / bucketCount;
+    const snapshot = await db.collection('activity_logs').get();
+    const docs = filterActivityDocsByDate(snapshot.docs.map((doc) => doc.data()), start, end);
+    const counts = Array.from({ length: bucketCount }, () => 0);
+
+    for (const doc of docs) {
+      const at = toDate(doc.activity_at);
+      const index = Math.min(bucketCount - 1, Math.floor((at.getTime() - start.getTime()) / bucketMs));
+      if (index >= 0) counts[index] += 1;
+    }
+
+    return counts.map((activity_count, index) => ({
+      start_at: new Date(start.getTime() + (index * bucketMs)).toISOString(),
+      end_at: new Date(start.getTime() + ((index + 1) * bucketMs)).toISOString(),
+      activity_count,
+    }));
   },
 
   /**

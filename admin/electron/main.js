@@ -57,6 +57,9 @@ const allowDevTools = process.env.OPEN_ELECTRON_DEVTOOLS === '1';
 // Log ke file: %USERPROFILE%\AppData\Roaming\LabKom Admin\logs\main.log
 autoUpdater.logger         = log;
 autoUpdater.logger.transports.file.level = 'info';
+autoUpdater.channel        = 'admin';
+autoUpdater.allowPrerelease = false;
+autoUpdater.allowDowngrade = false;
 autoUpdater.autoDownload   = false;  // Admin: download manual oleh kepala lab
 autoUpdater.autoInstallOnAppQuit = false;
 
@@ -559,6 +562,64 @@ ipcMain.handle('wake-on-lan', async (_ev, macAddress) => {
 });
 
 // ─── App lifecycle ──────────────────────────────────────────────────────────
+function sanitizeCollectedName(value, fallback = 'file') {
+  const base = path.basename(String(value || '').trim());
+  const safe = base.replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_').replace(/\s+/g, ' ').slice(0, 120);
+  return safe || fallback;
+}
+
+ipcMain.handle('save-collected-file', async (_event, payload = {}) => {
+  try {
+    const collectionId = String(payload.collection_id || '').trim();
+    if (!/^collect_[A-Za-z0-9_-]{6,70}$/.test(collectionId)) {
+      return { success: false, message: 'ID pengumpulan tidak valid.' };
+    }
+    const match = String(payload.data || '').match(/^data:[^;,]{1,120};base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) return { success: false, message: 'Format file tidak valid.' };
+    const bytes = Buffer.from(match[1], 'base64');
+    if (!bytes.length || bytes.length > 1024 * 1024) {
+      return { success: false, message: 'File kosong atau melebihi 1 MB.' };
+    }
+
+    const collectionFolder = sanitizeCollectedName(collectionId, 'pengumpulan');
+    const destinationDir = path.join(app.getPath('downloads'), 'LabKom-Pengumpulan', collectionFolder);
+    fs.mkdirSync(destinationDir, { recursive: true });
+    const pcName = sanitizeCollectedName(payload.pc_name, 'PC');
+    const fileName = sanitizeCollectedName(payload.name, 'tugas');
+    const parsed = path.parse(fileName);
+    let destination = path.join(destinationDir, `${pcName}_${fileName}`);
+    let suffix = 1;
+    while (fs.existsSync(destination)) {
+      destination = path.join(destinationDir, `${pcName}_${parsed.name} (${suffix})${parsed.ext}`);
+      suffix += 1;
+    }
+    fs.writeFileSync(destination, bytes, { flag: 'wx' });
+    return { success: true, file_name: path.basename(destination), path: destination, size: bytes.length };
+  } catch (error) {
+    log.warn('[FILES] Gagal menyimpan pengumpulan:', error.message);
+    return { success: false, message: 'File pengumpulan tidak dapat disimpan.' };
+  }
+});
+
+ipcMain.handle('export-reports-pdf', async () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return { success: false, message: 'Jendela Admin tidak tersedia.' };
+  try {
+    const result = await dialog.showSaveDialog(mainWindow, {
+      title: 'Simpan Laporan LabKom',
+      defaultPath: path.join(app.getPath('downloads'), `Laporan-LabKom-${new Date().toISOString().slice(0, 10)}.pdf`),
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (result.canceled || !result.filePath) return { success: false, canceled: true };
+    const pdf = await mainWindow.webContents.printToPDF({ printBackground: true, landscape: true, pageSize: 'A4' });
+    fs.writeFileSync(result.filePath, pdf);
+    shell.showItemInFolder(result.filePath);
+    return { success: true, path: result.filePath };
+  } catch (error) {
+    log.warn('[REPORTS] Gagal ekspor PDF:', error.message);
+    return { success: false, message: 'Laporan PDF gagal dibuat.' };
+  }
+});
+
 app.whenReady().then(async () => {
   await startServer();   // ← Jalankan/detect backend terlebih dahulu
   startDiscoveryBroadcast(); // ← Mulai broadcast UDP agar client bisa temukan server

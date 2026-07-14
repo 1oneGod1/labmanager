@@ -14,6 +14,7 @@ router.post('/', requireClient, activitiesController.createActivity);
 // Semua endpoint GET & DELETE memerlukan admin authentication
 router.get('/',                    requireAdmin, activitiesController.getActivities);
 router.get('/summary',             requireAdmin, activitiesController.getActivitySummary);
+router.get('/timeline',            requireAdmin, activitiesController.getActivityTimeline);
 router.get('/session/:sessionId',  requireAdmin, activitiesController.getSessionActivities);
 router.get('/student/:studentId',  requireAdmin, activitiesController.getStudentActivities);
 router.get('/stats',               requireAdmin, activitiesController.getActivityStats);

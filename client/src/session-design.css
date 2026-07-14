@@ -1,0 +1,194 @@
+:root {
+  --student-bg: #070c16;
+  --student-screen: #0a1120;
+  --student-panel: #0f1828;
+  --student-panel-2: #141f33;
+  --student-elev: #1a2740;
+  --student-line: rgba(120, 150, 200, 0.13);
+  --student-line-strong: rgba(120, 150, 200, 0.26);
+  --student-text: #e7edf7;
+  --student-text-2: #9db0cc;
+  --student-text-3: #647793;
+  --student-yellow: #ffc83d;
+  --student-yellow-2: #ffd76a;
+  --student-green: #3fd08a;
+  --student-red: #ff6b6b;
+}
+
+.student-condition-page {
+  min-height: 100vh;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--student-bg);
+  color: var(--student-text);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.student-condition-header {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--student-line);
+  background: var(--student-screen);
+}
+
+.student-condition-avatar {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  border-radius: 10px;
+  background: var(--student-yellow);
+  color: #1a1407;
+  font-weight: 800;
+}
+
+.student-condition-title { min-width: 0; }
+.student-condition-title h1 { margin: 0; font-size: 17px; line-height: 1.2; }
+.student-condition-title p { margin: 3px 0 0; color: var(--student-text-3); font: 10px "IBM Plex Mono", monospace; }
+
+.student-steps {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--student-text-3);
+  font-size: 10px;
+}
+
+.student-step { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.student-step-number { width: 21px; height: 21px; display: grid; place-items: center; border-radius: 50%; background: var(--student-panel-2); color: var(--student-text-3); font: 600 9px "IBM Plex Mono", monospace; }
+.student-step.is-done .student-step-number { background: var(--student-green); color: #07150e; }
+.student-step.is-active .student-step-number { background: var(--student-yellow); color: #1a1407; }
+.student-step.is-active { color: var(--student-text-2); }
+.student-step-separator { color: var(--student-text-3); }
+
+.student-condition-body {
+  width: min(900px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 22px 0 104px;
+}
+
+.student-info-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 13px 15px;
+  border: 1px solid rgba(255, 200, 61, 0.22);
+  border-radius: 11px;
+  background: rgba(255, 200, 61, 0.11);
+  color: var(--student-text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.student-info-banner svg { width: 17px; height: 17px; flex: 0 0 17px; color: var(--student-yellow); }
+
+.student-summary {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid var(--student-line);
+  border-radius: 11px;
+  background: var(--student-panel-2);
+}
+
+.student-summary-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 13px; border-bottom: 1px solid var(--student-line); color: var(--student-text); font-size: 11px; font-weight: 700; }
+.student-summary-header span { color: var(--student-text-3); font: 9px "IBM Plex Mono", monospace; font-weight: 400; }
+.student-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); }
+.student-summary-grid div { padding: 11px 13px; border-right: 1px solid var(--student-line); }
+.student-summary-grid div:last-child { border-right: 0; }
+.student-summary-grid span { display: block; color: var(--student-text-3); font-size: 9px; }
+.student-summary-grid strong { display: block; margin-top: 4px; color: var(--student-text); font: 700 15px "IBM Plex Mono", monospace; }
+
+.student-checklist { display: grid; gap: 10px; }
+.student-check-row {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--student-line);
+  border-radius: 11px;
+  background: var(--student-panel);
+  transition: 150ms ease;
+}
+
+.student-check-row.is-issue { border-color: rgba(255, 107, 107, 0.32); }
+.student-check-row.is-issue .student-check-main { min-height: 84px; align-items: flex-start; }
+.student-check-main { min-height: 66px; display: flex; align-items: center; gap: 13px; padding: 10px 14px; }
+.student-check-icon { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 38px; border-radius: 9px; background: var(--student-panel-2); color: var(--student-yellow); }
+.student-check-row.is-issue .student-check-icon { background: rgba(255, 107, 107, 0.12); color: var(--student-red); }
+.student-check-icon svg { width: 18px; height: 18px; }
+.student-check-copy { min-width: 0; flex: 1; }
+.student-check-copy strong { display: block; color: var(--student-text); font-size: 12px; }
+.student-check-copy span { display: block; margin-top: 3px; color: var(--student-text-3); font-size: 9.5px; }
+
+.student-segment { display: flex; flex: 0 0 auto; padding: 3px; border: 1px solid var(--student-line); border-radius: 8px; background: rgba(7, 12, 22, 0.42); }
+.student-segment button { min-width: 68px; height: 28px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; border-radius: 6px; color: var(--student-text-2); font-size: 10px; font-weight: 600; transition: 150ms ease; }
+.student-segment button:hover { color: var(--student-text); background: var(--student-elev); }
+.student-segment button.is-good { background: var(--student-green); color: #07150e; }
+.student-segment button.is-issue { background: var(--student-red); color: #1b0909; }
+.student-segment svg { width: 12px; height: 12px; }
+
+.student-check-note { position: absolute; left: 65px; bottom: 10px; width: min(370px, calc(100% - 310px)); }
+.student-check-note input { width: 100%; height: 30px; padding: 0 10px; border: 1px solid rgba(255, 107, 107, 0.32); border-radius: 7px; outline: 0; background: rgba(255, 107, 107, 0.08); color: var(--student-text); font-size: 10px; }
+.student-check-note input:focus { border-color: var(--student-red); box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.08); }
+.student-check-note input::placeholder { color: var(--student-text-3); }
+
+.student-condition-footer {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 10;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px max(24px, calc((100vw - 900px) / 2));
+  border-top: 1px solid var(--student-line);
+  background: rgba(10, 17, 32, 0.98);
+  backdrop-filter: blur(16px);
+}
+
+.student-confirm { min-width: 0; flex: 1; display: flex; align-items: center; gap: 9px; color: var(--student-text-2); font-size: 10px; }
+.student-confirm input { width: 17px; height: 17px; flex: 0 0 17px; accent-color: var(--student-yellow); }
+
+.student-submit {
+  min-width: 190px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 9px;
+  background: var(--student-yellow);
+  color: #1a1407;
+  font-size: 11px;
+  font-weight: 700;
+  transition: 150ms ease;
+}
+
+.student-submit:hover:not(:disabled) { background: var(--student-yellow-2); transform: translateY(-1px); }
+.student-submit:disabled { background: var(--student-panel-2); color: var(--student-text-3); cursor: not-allowed; }
+.student-submit svg { width: 16px; height: 16px; }
+.student-error { color: var(--student-red); font-size: 10px; }
+
+@media (max-width: 760px) {
+  .student-condition-header { padding: 12px 16px; }
+  .student-steps { display: none; }
+  .student-condition-body { width: calc(100% - 24px); padding-top: 14px; }
+  .student-check-main { align-items: flex-start; flex-wrap: wrap; }
+  .student-check-copy { min-width: calc(100% - 55px); }
+  .student-segment { margin-left: 51px; }
+  .student-check-note { padding-left: 14px; }
+  .student-check-row.is-issue .student-check-main { min-height: 66px; }
+  .student-check-note { position: static; width: auto; padding: 0 14px 12px; }
+  .student-summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .student-summary-grid div:nth-child(2) { border-right: 0; }
+  .student-summary-grid div:nth-child(-n + 2) { border-bottom: 1px solid var(--student-line); }
+  .student-condition-footer { padding: 10px 14px; }
+  .student-confirm { display: none; }
+  .student-submit { width: 100%; }
+}

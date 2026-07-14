@@ -18,6 +18,11 @@ tmp/
 .env.local
 .env.*.local
 
+# Firebase / Google Cloud credentials (never commit)
+firebase-service-account.json
+*-firebase-adminsdk-*.json
+serviceAccountKey.json
+
 # Logs
 *.log
 npm-debug.log*

@@ -1,138 +1,82 @@
-# 🚀 Panduan Build & Release LabKom
+# Panduan Build dan Release LabKom
 
-## Struktur Aplikasi
+Repository produksi: `https://github.com/1oneGod1/labmanager`
 
-| Komponen | Folder | Deskripsi |
-|----------|--------|-----------|
-| **Admin** | `admin/` | Dashboard kepala lab (Electron + React + bundled server) |
-| **Client** | `client/` | Aplikasi kiosk siswa (Electron + React) |
-| **Server** | `server/` | Express.js API + Socket.IO (di-bundle dalam Admin) |
+## Struktur aplikasi
 
----
+| Komponen | Folder | Isi |
+|---|---|---|
+| Admin | `admin/` | Dashboard Electron dan backend server terbundel |
+| Siswa | `client/` | Aplikasi login/kiosk Electron untuk PC siswa |
+| Server | `server/` | Express API dan Socket.IO yang dibawa installer Admin |
 
-## 🔨 Build Lokal (Manual)
+## Rilis otomatis dari GitHub
 
-### Prasyarat
-- Node.js 20+
-- npm
+Workflow `.github/workflows/release.yml` berjalan otomatis setiap ada push ke branch `main` yang mengubah folder `admin`, `client`, `server`, atau workflow rilis.
 
-### Build Admin (termasuk server)
-```bash
+Workflow tersebut akan:
+
+1. Membuat nomor versi build yang selalu meningkat.
+2. Membangun installer Siswa dan Admin pada Windows runner.
+3. Menerbitkan keduanya pada satu GitHub Release berstatus published.
+4. Mengunggah metadata kanal `client.yml` dan `admin.yml` agar kedua aplikasi tidak saling mengambil installer.
+
+Alur kerja harian:
+
+```powershell
+git add -A
+git commit -m "feat: jelaskan perubahan"
+git push origin main
+```
+
+Setelah push, lihat status pada GitHub > Actions > **Release LabKom Apps**. Jangan hapus file `.yml` atau `.blockmap` dari aset Release karena file tersebut dipakai updater.
+
+Untuk menjalankan ulang secara manual, buka Actions > Release LabKom Apps > Run workflow. Kolom versi boleh dikosongkan agar dibuat otomatis.
+
+## Cara aplikasi menerima update
+
+### PC Siswa
+
+- Memeriksa update 30 detik setelah aplikasi dimulai dan setiap 4 jam.
+- Pengaturan dapat dibuka dari layar setup atau login.
+- Opsi per-PC: alamat server, mulai bersama Windows, update otomatis, dan notifikasi update.
+- Jika update otomatis aktif, paket diunduh di belakang layar.
+- Setelah selesai, siswa mendapat notifikasi dan dapat memasang saat itu juga; jika tidak, update dipasang saat aplikasi ditutup.
+
+### Admin
+
+- Memeriksa update setelah aplikasi dimulai.
+- Menampilkan status versi baru di dashboard.
+- Download dan restart tetap dikonfirmasi oleh Kepala Lab.
+
+## Build lokal
+
+```powershell
 cd server
-npm install
+npm ci
+
+cd ../client
+npm ci
+npm run electron:build
 
 cd ../admin
-npm install
+npm ci
 npm run electron:build
 ```
-Hasil: `admin/dist-electron/LabKom Admin - Dashboard Setup *.exe`
 
-> Node.js hanya diperlukan pada mesin build. Installer Admin menjalankan server dengan runtime Node bawaan Electron, sehingga PC tujuan tidak perlu memasang Node.js.
+Hasil build berada pada `client/dist-electron` dan `admin/dist-electron`.
 
-### Build Client
-```bash
-cd client
-npm install
-npm run electron:build
-```
-Hasil: `client/dist-electron/LabKom Siswa Setup *.exe`
+## Keamanan produksi
 
----
+- Jangan commit `.env`, service account Firebase, token GitHub, atau kunci pairing.
+- Simpan service account di luar repository dan isi path absolut pada `%APPDATA%\LabKom Admin - Dashboard\server.env`.
+- Isi `ADMIN_PASSWORD` dengan hash bcrypt.
+- Gunakan `CLIENT_REGISTRATION_KEY` acak minimal 32 karakter dan nilai yang sama pada environment PC siswa.
+- GitHub Actions memakai `GITHUB_TOKEN` bawaan workflow; tidak perlu menulis personal access token ke file.
 
-## 🤖 Auto-Release via GitHub Actions
+## Pemecahan masalah update
 
-GitHub Actions workflow sudah dikonfigurasi untuk build & publish otomatis ke GitHub Releases.
-
-### Release Admin App
-```bash
-# 1. Naikkan versi di admin/package.json
-# 2. Commit perubahan
-git add -A && git commit -m "release: admin v1.0.1"
-
-# 3. Buat tag dan push
-git tag admin-v1.0.1
-git push origin main --tags
-```
-
-### Release Client App
-```bash
-# 1. Naikkan versi di client/package.json
-# 2. Commit perubahan
-git add -A && git commit -m "release: client v1.0.1"
-
-# 3. Buat tag dan push
-git tag client-v1.0.1
-git push origin main --tags
-```
-
-### Release Keduanya Sekaligus
-```bash
-git add -A && git commit -m "release: v1.0.1"
-git tag admin-v1.0.1
-git tag client-v1.0.1
-git push origin main --tags
-```
-
----
-
-## 🔄 Auto-Update
-
-### Client (Siswa)
-- **Auto-download**: Update didownload otomatis di background
-- **Auto-install**: Terinstall otomatis saat app ditutup/restart
-- Siswa tidak perlu melakukan apapun - update terjadi transparan
-
-### Admin (Kepala Lab)
-- **Manual check**: Klik tombol "Cek Update" di dashboard
-- **Download**: Konfirmasi download setelah update ditemukan
-- **Install**: Pilih "Install Sekarang" atau otomatis saat app ditutup
-
-### Publish Config
-Kedua app menggunakan GitHub Releases dari repo `1oneGod1/labkomAPP`:
-- Admin: `admin/package.json` → `build.publish`
-- Client: `client/package.json` → `build.publish`
-
----
-
-## 📋 Checklist Sebelum Release
-
-- [ ] Test semua fitur di mode development
-- [ ] Naikkan `version` di `package.json` yang relevan
-- [ ] Pastikan `server/.env` TIDAK ikut ter-bundle (sudah di-exclude via filter)
-- [ ] Pastikan `firebase-service-account.json` ada di server jika menggunakan Firebase
-- [ ] Commit semua perubahan
-- [ ] Buat tag dengan format yang benar (`admin-v*` atau `client-v*`)
-- [ ] Push tag ke GitHub
-
----
-
-## 🛠 Troubleshooting
-
-### Build gagal di GitHub Actions
-- Pastikan `secrets.GITHUB_TOKEN` sudah tersedia (otomatis dari GitHub)
-- Cek apakah `npm ci` berhasil (perlu `package-lock.json`)
-
-### Auto-update tidak bekerja
-- Pastikan GitHub Release berstatus **Published** (bukan Draft)
-- File `latest.yml` harus ada di release assets
-- Cek log di `%APPDATA%/labkom-client/logs/` atau `%APPDATA%/labkom-admin/logs/`
-
-### Client tidak menemukan server
-- Admin app harus berjalan terlebih dahulu (server otomatis start)
-- Pastikan kedua PC dalam jaringan LAN yang sama
-- UDP broadcast port 41234 harus tidak diblokir firewall
-
-## Konfigurasi keamanan wajib
-
-### Electron/Node
-
-1. Jalankan `npm run hash-admin-password -- <password-kuat>` dari folder `server`.
-2. Setelah Admin pertama kali dijalankan, edit `server.env` di folder data aplikasi Admin. Lokasinya dicatat pada log Electron.
-3. Isi `ADMIN_PASSWORD` dengan hash bcrypt, `FIREBASE_SERVICE_ACCOUNT_KEY` dengan path absolut di luar folder instalasi, dan `CLIENT_REGISTRATION_KEY` dengan kunci acak minimal 32 karakter.
-4. Pada setiap PC siswa, set environment variable `LABKOM_CLIENT_REGISTRATION_KEY` ke nilai pairing yang sama.
-
-Service account Firebase tidak boleh dimasukkan ke repository maupun installer.
-
-### Rewrite .NET
-
-Set `LABKOM_SHARED_SECRET` dengan nilai acak minimal 16 karakter dan nilai yang sama pada Teacher, Student Agent, dan Student Overlay. Aplikasi Teacher menolak start dan client menolak koneksi jika secret belum tersedia. Nilai dapat pula diisi pada `Teacher:SharedSecret`, `Agent:SharedSecret`, atau `Overlay:SharedSecret` di appsettings lokal, tetapi environment variable lebih disarankan.
+- Pastikan workflow hijau dan Release berstatus published, bukan draft.
+- Pastikan aset Release memuat installer, `.blockmap`, `client.yml`, dan `admin.yml`.
+- Periksa log aplikasi di folder `logs` di bawah `%APPDATA%` masing-masing aplikasi.
+- PC siswa memerlukan akses internet ke GitHub Releases untuk menerima pembaruan.

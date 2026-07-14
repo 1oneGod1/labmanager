@@ -89,7 +89,8 @@ app.use((_req, res) => {
 });
 
 // =====================
-attachRealtimeHub(server);
+const realtimeHub = attachRealtimeHub(server);
+app.set('realtimeHub', realtimeHub);
 
 // Start Server
 // =====================

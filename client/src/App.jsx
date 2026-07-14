@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Monitor, User, Key, Wifi, WifiOff, AlertCircle, Server, ArrowRight, RefreshCw } from 'lucide-react';
+import { Monitor, User, Key, Wifi, WifiOff, AlertCircle, Server, ArrowRight, RefreshCw, Download, Upload, X, Settings } from 'lucide-react';
 import { io } from 'socket.io-client';
 import LogoutWidget from './LogoutWidget.jsx';
 import AdminExitDialog from './AdminExitDialog.jsx';
@@ -8,6 +8,7 @@ import PostSessionCheck from './PostSessionCheck.jsx';
 import AttentionModeOverlay from './AttentionModeOverlay.jsx';
 import ChatBubble from './ChatBubble.jsx';
 import AdminScreenShare from './AdminScreenShare.jsx';
+import { ClientSettingsModal, ClientUpdateNotice } from './ClientSettingsPanel.jsx';
 import { apiCall } from './api.js';
 import logoSekolah from '../public/logo-sekolah.png';
 
@@ -24,6 +25,40 @@ const MODE_LOGIN     = 'login';
 const MODE_PRECHECK  = 'precheck';
 const MODE_WIDGET    = 'widget';
 const MODE_POSTCHECK = 'postcheck';
+const PREVIEW_SCREEN = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get('preview')
+  : null;
+const PREVIEW_STUDENT = {
+  nis: 'SPH-231412',
+  nama_lengkap: 'Maya Putri',
+  kelas: 'X RPL 1',
+  pc_name: 'PC-LAB-13',
+};
+
+async function saveFileInBrowser(payload) {
+  try {
+    const response = await fetch(payload.data);
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = href;
+    anchor.download = payload.name || 'file-kelas';
+    anchor.click();
+    URL.revokeObjectURL(href);
+    return { success: true, file_name: anchor.download, size: blob.size };
+  } catch {
+    return { success: false, message: 'File tidak dapat disimpan.' };
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('File tidak dapat dibaca.'));
+    reader.readAsDataURL(file);
+  });
+}
 
 export default function App() {
   const [mode,           setMode]           = useState(MODE_LOADING);
@@ -43,6 +78,18 @@ export default function App() {
   const [cornerClicks,   setCornerClicks]   = useState(0);
   const [discoveredServers, setDiscoveredServers] = useState([]);
   const [attentionMode,  setAttentionMode]  = useState({ enabled: false, message: '' });
+  const [receivedFile, setReceivedFile] = useState(null);
+  const [collectionRequest, setCollectionRequest] = useState(null);
+  const [submissionBusy, setSubmissionBusy] = useState(false);
+  const [loginWallpaper, setLoginWallpaper] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [clientSettings, setClientSettings] = useState({
+    autoUpdate: true,
+    openAtLogin: true,
+    notifyUpdates: true,
+    appVersion: '1.1.0',
+  });
+  const [updateStatus, setUpdateStatus] = useState({ state: 'idle', currentVersion: '1.1.0' });
   const autoSwitchingServerRef = useRef(false);
   const socketRef = useRef(null);
 
@@ -57,10 +104,23 @@ export default function App() {
   // ── Load konfigurasi server URL dari Electron userData ──────────
   useEffect(() => {
     async function loadConfig() {
-      if (window.electronAPI?.getServerUrl) {
+      if (window.electronAPI?.getClientSettings) {
+        const storedSettings = await window.electronAPI.getClientSettings();
+        setClientSettings(storedSettings);
+        setUpdateStatus(storedSettings.updateStatus || { state: 'idle', currentVersion: storedSettings.appVersion });
+        const stored = storedSettings.serverUrl;
+        if (stored) {
+          setServerUrl(stored);
+          setSetupInput(stored);
+          setMode(MODE_LOGIN);
+        } else {
+          setMode(MODE_SETUP);
+        }
+      } else if (window.electronAPI?.getServerUrl) {
         const stored = await window.electronAPI.getServerUrl();
         if (stored) {
-          persistServerUrl(stored);
+          setServerUrl(stored);
+          setSetupInput(stored);
           setMode(MODE_LOGIN);
         } else {
           setMode(MODE_SETUP);
@@ -81,6 +141,19 @@ export default function App() {
     } else {
       setPcName('PC-BROWSER-DEV');
     }
+  }, []);
+
+  useEffect(() => {
+    const applyRendererPolicy = (policy = {}) => {
+      const target = policy.wallpaper_target || 'both';
+      const url = /^https?:\/\//i.test(String(policy.wallpaper_url || '')) ? policy.wallpaper_url : '';
+      setLoginWallpaper(['login', 'both'].includes(target) ? url : '');
+    };
+    window.electronAPI?.getControlPolicy?.().then((policy) => {
+      if (policy) applyRendererPolicy(policy);
+    });
+    window.electronAPI?.onControlSettings?.(applyRendererPolicy);
+    return () => window.electronAPI?.removeAllListeners?.('control-settings');
   }, []);
 
   // ── Update jam setiap detik ─────────────────────────────────────
@@ -133,10 +206,12 @@ export default function App() {
         return [...prev, data];
       });
     });
+    window.electronAPI?.onUpdateStatus?.((status) => setUpdateStatus(status));
     return () => {
       window.electronAPI?.removeAllListeners('kiosk-off');
       window.electronAPI?.removeAllListeners('return-to-login');
       window.electronAPI?.removeAllListeners('server-discovered');
+      window.electronAPI?.removeAllListeners('client-update-status');
     };
   }, []);
 
@@ -224,6 +299,45 @@ export default function App() {
         window.electronAPI?.setAttentionMode?.(Boolean(payload.enabled));
       });
 
+      s.on('classroom:file-received', async (payload = {}) => {
+        const result = window.electronAPI?.saveReceivedFile
+          ? await window.electronAPI.saveReceivedFile(payload)
+          : await saveFileInBrowser(payload);
+
+        s.emit('client:file-status', {
+          distribution_id: payload.id,
+          status: result.success ? 'delivered' : 'failed',
+          size: result.size || payload.size || 0,
+        });
+
+        setReceivedFile({
+          success: Boolean(result.success),
+          name: result.file_name || payload.name || 'File kelas',
+          path: result.path || null,
+          distributionId: payload.id || null,
+          message: result.success
+            ? 'Tersimpan di Downloads/LabKom'
+            : (result.message || 'File gagal disimpan'),
+        });
+      });
+
+      s.on('classroom:file-collection-request', (payload = {}) => {
+        if (!studentData || !payload.id || !payload.label) return;
+        setCollectionRequest(payload);
+      });
+
+      s.on('session:force-logout', (payload = {}) => {
+        sessionStorage.clear();
+        setAttentionMode({ enabled: false, message: '' });
+        setCollectionRequest(null);
+        setStudentData(null);
+        setMode(MODE_LOGIN);
+        setNis('');
+        setPassword('');
+        setError(payload.reason || 'Sesi dihentikan oleh Admin.');
+        window.electronAPI?.doLogout?.();
+      });
+
       s.on('connect', () => {
         console.log('[Socket] Connected to server for attention mode');
         s.emit('client:hello', {
@@ -252,7 +366,7 @@ export default function App() {
 
       socket = io(serverUrl, {
         transports: ['websocket', 'polling'],
-        auth: { role: 'client', client_token: clientToken },
+        auth: { role: 'client', client_token: clientToken, channel: 'renderer' },
         reconnection: true,
         reconnectionDelay: 1000,
         reconnectionAttempts: 5,
@@ -268,6 +382,49 @@ export default function App() {
       socketRef.current = null;
     };
   }, [serverUrl, mode, pcName, studentData?.nama_lengkap]);
+
+  const submitCollectionFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !collectionRequest || submissionBusy) return;
+    if (file.size > 1024 * 1024) {
+      setReceivedFile({ success: false, kind: 'submission', name: file.name, message: 'Ukuran tugas maksimal 1 MB.' });
+      return;
+    }
+    const socket = socketRef.current;
+    if (!socket?.connected) {
+      setReceivedFile({ success: false, kind: 'submission', name: file.name, message: 'Server realtime belum terhubung.' });
+      return;
+    }
+    setSubmissionBusy(true);
+    try {
+      const data = await readFileAsDataUrl(file);
+      socket.timeout(10_000).emit('client:file-submission', {
+        collection_id: collectionRequest.id,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        data,
+        student_name: studentData?.nama_lengkap || '',
+      }, (timeoutError, response) => {
+        setSubmissionBusy(false);
+        if (timeoutError || !response?.success) {
+          setReceivedFile({ success: false, kind: 'submission', name: file.name, message: response?.error || 'Tugas gagal dikirim.' });
+          return;
+        }
+        socket.emit('client:file-status', {
+          distribution_id: collectionRequest.id,
+          status: 'submitted',
+          size: file.size,
+        });
+        setReceivedFile({ success: true, kind: 'submission', name: file.name, message: 'Tugas berhasil dikirim ke Admin.' });
+        setCollectionRequest(null);
+      });
+    } catch (submitError) {
+      setSubmissionBusy(false);
+      setReceivedFile({ success: false, kind: 'submission', name: file.name, message: submitError.message || 'Tugas gagal dibaca.' });
+    }
+  };
 
   // ── Klik 5x pojok kiri bawah → buka dialog admin ────────────────
   const handleCornerClick = useCallback(() => {
@@ -320,11 +477,92 @@ export default function App() {
     }
   };
 
+  const handleSaveClientSettings = async (nextSettings) => {
+    let normalizedUrl = String(nextSettings.serverUrl || '').trim();
+    if (!normalizedUrl) return { success: false, message: 'Alamat server wajib diisi.' };
+    if (!/^https?:\/\//i.test(normalizedUrl)) normalizedUrl = `http://${normalizedUrl}`;
+    normalizedUrl = normalizedUrl.replace(/\/$/, '');
+    try {
+      const parsed = new URL(normalizedUrl);
+      if (!parsed.port) parsed.port = '3001';
+      normalizedUrl = parsed.toString().replace(/\/$/, '');
+    } catch {
+      return { success: false, message: 'Format alamat server tidak valid.' };
+    }
+
+    if (normalizedUrl !== serverUrl && window.electronAPI?.verifyServer) {
+      const verification = await window.electronAPI.verifyServer(normalizedUrl);
+      if (!verification.ok || !verification.labkom) {
+        return { success: false, message: 'Server LabKom tidak dapat dijangkau pada alamat tersebut.' };
+      }
+    }
+
+    if (!window.electronAPI?.saveClientSettings) {
+      const localSettings = { ...nextSettings, serverUrl: normalizedUrl, appVersion: '1.1.0' };
+      setClientSettings(localSettings);
+      persistServerUrl(normalizedUrl);
+      return { success: true, settings: localSettings };
+    }
+
+    const result = await window.electronAPI.saveClientSettings({ ...nextSettings, serverUrl: normalizedUrl });
+    if (result.success) {
+      setClientSettings(result.settings);
+      setServerUrl(normalizedUrl);
+      setSetupInput(normalizedUrl);
+      if (result.settings.updateStatus) setUpdateStatus(result.settings.updateStatus);
+    }
+    return result;
+  };
+
+  const handleCheckUpdate = async () => {
+    if (!window.electronAPI?.checkForUpdates) {
+      const status = { state: 'dev', message: 'Pemeriksaan update aktif setelah aplikasi diinstal.' };
+      setUpdateStatus((current) => ({ ...current, ...status }));
+      return { success: false, ...status };
+    }
+    setUpdateStatus((current) => ({ ...current, state: 'checking', message: null }));
+    const result = await window.electronAPI.checkForUpdates();
+    if (result && !result.success && result.state) {
+      setUpdateStatus((current) => ({ ...current, ...result }));
+    }
+    return result;
+  };
+
+  const handleDownloadUpdate = () => window.electronAPI?.downloadUpdate?.();
+  const handleInstallUpdate = () => window.electronAPI?.installUpdate?.();
+
   const formattedTime = time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const formattedDate = time.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+  const settingsLayer = (
+    <>
+      <ClientSettingsModal
+        open={settingsOpen}
+        settings={clientSettings}
+        serverUrl={serverUrl || setupInput}
+        updateStatus={updateStatus}
+        onClose={() => setSettingsOpen(false)}
+        onSave={handleSaveClientSettings}
+        onCheck={handleCheckUpdate}
+        onDownload={handleDownloadUpdate}
+        onInstall={handleInstallUpdate}
+      />
+      {[MODE_SETUP, MODE_LOGIN].includes(mode) && (
+        <ClientUpdateNotice status={updateStatus} onOpen={() => setSettingsOpen(true)} onInstall={handleInstallUpdate} />
+      )}
+    </>
+  );
+
   // ── Setelah login, simpan serverUrl ke sessionStorage (untuk LogoutWidget) ──
   // dan juga simpan agar tersedia di komponen turunan
+  if (PREVIEW_SCREEN === 'precheck') {
+    return <CheckConditionForm studentData={PREVIEW_STUDENT} serverUrl="http://localhost:3001" pcName="PC-LAB-13" onComplete={() => {}} />;
+  }
+
+  if (PREVIEW_SCREEN === 'postcheck') {
+    return <PostSessionCheck studentData={PREVIEW_STUDENT} serverUrl="http://localhost:3001" onLogoutConfirmed={() => {}} />;
+  }
+
   if (mode !== MODE_LOADING) {
     sessionStorage.setItem('server_url', serverUrl);
   }
@@ -380,6 +618,7 @@ export default function App() {
 
     return (
       <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans">
+        {settingsLayer}
         <div className="w-full max-w-md bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl p-10">
           <div className="flex flex-col items-center mb-8">
             <div className="w-20 h-20 bg-blue-600 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-blue-600/30">
@@ -499,6 +738,14 @@ export default function App() {
           {/* Tombol keluar — hanya di setup screen sebelum login */}
           <button
             type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-slate-700 py-2.5 text-sm font-semibold text-slate-300 transition hover:bg-slate-700 hover:text-white"
+          >
+            <Settings className="h-4 w-4" /> Pengaturan aplikasi
+          </button>
+
+          <button
+            type="button"
             onClick={() => window.electronAPI?.exitApp?.()}
             className="mt-4 w-full py-2.5 text-sm text-slate-500 hover:text-slate-300 hover:bg-slate-700 rounded-xl transition-all"
           >
@@ -512,12 +759,58 @@ export default function App() {
   // ── Overlays shared across all post-setup modes ──────────────────
   const sharedOverlays = (
     <>
+      {settingsLayer}
       <AdminScreenShare socket={socketRef.current} />
       <AttentionModeOverlay
         enabled={attentionMode.enabled}
         message={attentionMode.message}
         onAcknowledge={() => socketRef.current?.emit('client:attention-ack', {})}
       />
+      {collectionRequest && (
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-blue-400/30 bg-slate-900 p-6 text-white shadow-2xl">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="grid h-11 w-11 flex-none place-items-center rounded-xl bg-blue-400/15 text-blue-300"><Upload className="h-5 w-5" /></span>
+              <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-blue-300">Pengumpulan tugas</p><h3 className="mt-1 text-lg font-bold">{collectionRequest.label}</h3><p className="mt-1 text-xs text-slate-400">Pilih satu file, maksimal 1 MB.</p></div>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setCollectionRequest(null)} disabled={submissionBusy} className="flex-1 rounded-xl border border-slate-600 px-4 py-3 text-sm font-semibold text-slate-300 hover:bg-slate-800 disabled:opacity-50">Nanti</button>
+              <label className={`flex-1 cursor-pointer rounded-xl bg-blue-600 px-4 py-3 text-center text-sm font-semibold hover:bg-blue-500 ${submissionBusy ? 'pointer-events-none opacity-50' : ''}`}>
+                {submissionBusy ? 'Mengirim…' : 'Pilih & kirim file'}
+                <input type="file" className="sr-only" onChange={submitCollectionFile} disabled={submissionBusy} />
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+      {receivedFile && (
+        <div className={`fixed right-5 top-5 z-[100] w-80 rounded-2xl border p-4 shadow-2xl ${receivedFile.success ? 'border-emerald-400/30 bg-slate-900 text-white' : 'border-red-400/40 bg-red-950 text-white'}`}>
+          <button onClick={() => setReceivedFile(null)} className="absolute right-3 top-3 text-slate-400 hover:text-white" aria-label="Tutup notifikasi file">
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex items-start gap-3 pr-6">
+            <span className={`grid h-10 w-10 flex-none place-items-center rounded-xl ${receivedFile.success ? 'bg-emerald-400/15 text-emerald-300' : 'bg-red-400/15 text-red-300'}`}>
+              <Download className="h-5 w-5" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{receivedFile.kind === 'submission' ? 'Pengumpulan tugas' : 'File dari pengajar'}</p>
+              <p className="mt-1 truncate text-sm font-semibold">{receivedFile.name}</p>
+              <p className="mt-1 text-xs text-slate-300">{receivedFile.message}</p>
+              {receivedFile.success && receivedFile.path && receivedFile.kind !== 'submission' && (
+                <button
+                  className="mt-3 rounded-lg bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/25"
+                  onClick={async () => {
+                    const opened = await window.electronAPI?.showReceivedFile?.(receivedFile.path);
+                    if (opened && receivedFile.distributionId) {
+                      socketRef.current?.emit('client:file-status', { distribution_id: receivedFile.distributionId, status: 'opened' });
+                    }
+                  }}
+                >Tampilkan file</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 
@@ -617,7 +910,10 @@ export default function App() {
       {/* Background */}
       <div className="absolute inset-0 opacity-20">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600 via-indigo-900 to-slate-900 mix-blend-multiply" />
-        <div className="w-full h-full bg-[url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center" />
+        <div
+          className="w-full h-full bg-cover bg-center"
+          style={{ backgroundImage: `url(${JSON.stringify(loginWallpaper || 'https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=2070&auto=format&fit=crop')})` }}
+        />
       </div>
 
       {/* Top Bar */}
@@ -636,6 +932,13 @@ export default function App() {
               : <><WifiOff className="w-5 h-5" /><span>Server Offline</span></>
             }
           </div>
+          <button
+            type="button"
+            onClick={() => setSettingsOpen(true)}
+            className="mt-2 inline-flex items-center gap-2 rounded-xl border border-white/15 bg-slate-900/50 px-3 py-2 text-xs font-semibold text-slate-200 backdrop-blur transition hover:bg-slate-800"
+          >
+            <Settings className="h-4 w-4" /> Pengaturan
+          </button>
         </div>
       </div>
 
@@ -742,7 +1045,7 @@ export default function App() {
 
           <div className="mt-8 text-center text-sm text-slate-500">
             <p>Butuh bantuan? Silakan hubungi Teknisi Lab.</p>
-            <p className="mt-1">Versi 1.0.0</p>
+            <p className="mt-1">Versi {clientSettings.appVersion || updateStatus.currentVersion || '-'}</p>
           </div>
         </div>
       </div>

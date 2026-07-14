@@ -12,6 +12,12 @@ export default function AttentionModeButton({ socket }) {
   const [ackCount, setAckCount] = useState(0);
 
   useEffect(() => {
+    const openPanel = () => setOpen(true);
+    window.addEventListener('labkom:open-attention', openPanel);
+    return () => window.removeEventListener('labkom:open-attention', openPanel);
+  }, []);
+
+  useEffect(() => {
     if (!socket) return;
     const onAck = () => setAckCount((n) => n + 1);
     socket.on('client:attention-ack', onAck);
@@ -39,19 +45,7 @@ export default function AttentionModeButton({ socket }) {
   };
 
   if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className={`fixed bottom-24 right-6 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 ${
-          active
-            ? 'bg-gradient-to-br from-red-500 to-red-600 text-white animate-pulse'
-            : 'bg-gradient-to-br from-amber-500 to-amber-600 text-white'
-        }`}
-        title={active ? 'Attention Mode AKTIF — klik untuk kontrol' : 'Aktifkan Attention Mode'}
-      >
-        {active ? <EyeOff className="w-6 h-6" /> : <Eye className="w-6 h-6" />}
-      </button>
-    );
+    return null;
   }
 
   return (

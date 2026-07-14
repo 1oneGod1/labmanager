@@ -4,4 +4,5 @@
 
 provider: github
 owner: 1oneGod1
-repo: labkomAPP
+repo: labmanager
+channel: client

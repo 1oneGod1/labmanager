@@ -1,0 +1,604 @@
+:root {
+  --lab-bg: #070c16;
+  --lab-screen: #0a1120;
+  --lab-panel: #0f1828;
+  --lab-panel-2: #141f33;
+  --lab-elev: #1a2740;
+  --lab-line: rgba(120, 150, 200, 0.13);
+  --lab-line-strong: rgba(120, 150, 200, 0.26);
+  --lab-text: #e7edf7;
+  --lab-text-2: #9db0cc;
+  --lab-text-3: #647793;
+  --lab-yellow: #ffc83d;
+  --lab-yellow-2: #ffd76a;
+  --lab-green: #3fd08a;
+  --lab-amber: #f4b740;
+  --lab-red: #ff6b6b;
+  --lab-blue: #5aa2ff;
+}
+
+body {
+  background: var(--lab-bg);
+}
+
+.labkom-admin {
+  height: 100vh;
+  min-width: 960px;
+  overflow: hidden;
+  background: var(--lab-bg);
+  color: var(--lab-text);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.labkom-admin button,
+.labkom-admin input,
+.labkom-admin select,
+.labkom-admin textarea {
+  font: inherit;
+}
+
+.labkom-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--lab-screen);
+}
+
+.labkom-header {
+  height: 64px;
+  flex: 0 0 64px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--lab-line);
+  background: rgba(10, 17, 32, 0.98);
+}
+
+.labkom-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 196px;
+}
+
+.labkom-logo {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--lab-yellow);
+  color: #1a1407;
+  font-weight: 800;
+  box-shadow: 0 6px 18px rgba(255, 200, 61, 0.16);
+}
+
+.labkom-brand strong { display: block; font-size: 13px; }
+.labkom-brand span { color: var(--lab-text-3); font-size: 10px; }
+
+.labkom-session {
+  min-width: 250px;
+  padding: 8px 11px;
+  border: 1px solid var(--lab-line);
+  border-radius: 10px;
+  background: var(--lab-panel);
+}
+
+.labkom-session strong { display: block; font-size: 12px; }
+.labkom-session span { display: block; margin-top: 1px; color: var(--lab-text-3); font-size: 10px; }
+
+.labkom-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 107, 107, 0.12);
+  color: var(--lab-red);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.labkom-live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--lab-red);
+  box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.08);
+}
+
+.labkom-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.labkom-action,
+.labkom-icon-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  border: 1px solid var(--lab-line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lab-text-2);
+  font-size: 11px;
+  font-weight: 600;
+  transition: 150ms ease;
+}
+
+.labkom-action:hover,
+.labkom-icon-button:hover {
+  border-color: var(--lab-line-strong);
+  background: var(--lab-elev);
+  color: var(--lab-text);
+}
+
+.labkom-action-primary {
+  border-color: transparent;
+  background: var(--lab-yellow);
+  color: #1a1407;
+}
+
+.labkom-action-primary:hover { background: var(--lab-yellow-2); color: #1a1407; }
+
+.labkom-clock {
+  min-width: 62px;
+  color: var(--lab-text);
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
+.labkom-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--lab-yellow);
+  color: #1a1407;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.labkom-body {
+  min-height: 0;
+  flex: 1;
+  display: flex;
+}
+
+.labkom-rail {
+  width: 74px;
+  flex: 0 0 74px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 7px;
+  border-right: 1px solid var(--lab-line);
+  background: var(--lab-panel);
+  overflow-y: auto;
+}
+
+.labkom-rail-button {
+  width: 58px;
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  color: var(--lab-text-3);
+  font-size: 9px;
+  font-weight: 600;
+  transition: 150ms ease;
+}
+
+.labkom-rail-button svg { width: 17px; height: 17px; }
+.labkom-rail-button:hover { background: var(--lab-elev); color: var(--lab-text-2); }
+.labkom-rail-button.is-active {
+  border-color: rgba(255, 200, 61, 0.16);
+  background: rgba(255, 200, 61, 0.1);
+  color: var(--lab-yellow);
+}
+
+.labkom-workspace { min-width: 0; min-height: 0; flex: 1; overflow: hidden; }
+
+.labkom-monitor {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  background: var(--lab-screen);
+}
+
+.labkom-monitor-main { min-width: 0; overflow-y: auto; padding: 12px 14px 18px; }
+
+.labkom-filterbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 0 12px;
+  background: var(--lab-screen);
+}
+
+.labkom-search {
+  width: min(300px, 34vw);
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--lab-line);
+  border-radius: 8px;
+  background: var(--lab-panel-2);
+  color: var(--lab-text-3);
+}
+
+.labkom-search input { min-width: 0; flex: 1; border: 0; outline: 0; background: transparent; color: var(--lab-text); font-size: 11px; }
+.labkom-search input::placeholder { color: var(--lab-text-3); }
+
+.labkom-chip {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--lab-line);
+  border-radius: 8px;
+  color: var(--lab-text-2);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.labkom-chip:hover { background: var(--lab-elev); }
+.labkom-chip.is-active { border-color: rgba(90, 162, 255, 0.2); background: rgba(90, 162, 255, 0.14); color: var(--lab-text); }
+
+.labkom-filter-actions { margin-left: auto; display: flex; gap: 6px; }
+
+.labkom-pc-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.labkom-pc-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--lab-line);
+  border-radius: 10px;
+  background: var(--lab-panel);
+  text-align: left;
+  transition: 160ms ease;
+}
+
+.labkom-pc-card:hover { transform: translateY(-1px); border-color: var(--lab-line-strong); background: var(--lab-elev); }
+.labkom-pc-card.is-selected { border-color: var(--lab-yellow); box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.12); }
+.labkom-pc-card.is-offline { opacity: 0.58; }
+
+.labkom-pc-preview {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-bottom: 1px solid var(--lab-line);
+  background: #080e19;
+  color: var(--lab-text-3);
+}
+
+.labkom-pc-preview img { width: 100%; height: 100%; object-fit: cover; }
+.labkom-pc-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 9px; }
+.labkom-pc-empty svg { width: 25px; height: 25px; opacity: 0.55; }
+
+.labkom-pc-meta { padding: 8px 9px 9px; }
+.labkom-pc-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.labkom-pc-title strong { min-width: 0; flex: 1; overflow: hidden; color: var(--lab-text); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-pc-id { display: block; margin-top: 3px; color: var(--lab-text-3); font-family: "IBM Plex Mono", monospace; font-size: 8.5px; }
+
+.labkom-status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--lab-text-3); }
+.labkom-status-dot.is-active { background: var(--lab-green); }
+.labkom-status-dot.is-locked { background: var(--lab-blue); }
+.labkom-status-dot.is-offline { background: #5b6a82; }
+
+.labkom-overview {
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--lab-line);
+  background: var(--lab-panel);
+}
+
+.labkom-panel-head { display: flex; align-items: center; justify-content: space-between; padding: 14px; border-bottom: 1px solid var(--lab-line); }
+.labkom-panel-head h2 { margin: 0; color: var(--lab-text); font-size: 14px; }
+.labkom-panel-head p { margin: 3px 0 0; color: var(--lab-text-3); font-size: 10px; }
+
+.labkom-badge { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 7px; background: rgba(63, 208, 138, 0.12); color: var(--lab-green); font-size: 9px; font-weight: 700; }
+
+.labkom-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px; }
+.labkom-stat { padding: 12px; border: 1px solid var(--lab-line); border-radius: 9px; background: var(--lab-panel-2); }
+.labkom-stat strong { display: block; color: var(--lab-text); font: 700 20px/1 "IBM Plex Mono", monospace; }
+.labkom-stat span { display: flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--lab-text-2); font-size: 9px; }
+
+.labkom-panel-section { margin: 0 14px 12px; overflow: hidden; border: 1px solid var(--lab-line); border-radius: 10px; background: var(--lab-panel-2); }
+.labkom-panel-section > header { display: flex; align-items: center; justify-content: space-between; padding: 10px 11px; border-bottom: 1px solid var(--lab-line); color: var(--lab-text); font-size: 11px; font-weight: 700; }
+.labkom-feed-row { display: flex; align-items: center; gap: 9px; padding: 10px 11px; border-bottom: 1px solid var(--lab-line); }
+.labkom-feed-row:last-child { border-bottom: 0; }
+.labkom-feed-icon { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 30px; border-radius: 8px; background: rgba(255, 200, 61, 0.12); color: var(--lab-yellow); }
+.labkom-feed-copy { min-width: 0; flex: 1; }
+.labkom-feed-copy strong { display: block; overflow: hidden; color: var(--lab-text); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-feed-copy span { display: block; margin-top: 2px; overflow: hidden; color: var(--lab-text-3); font: 9px "IBM Plex Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+
+.labkom-selected-preview { margin: 14px; overflow: hidden; border: 1px solid var(--lab-line); border-radius: 10px; background: #080e19; }
+.labkom-selected-preview .frame { aspect-ratio: 16 / 9; display: grid; place-items: center; color: var(--lab-text-3); }
+.labkom-selected-preview img { width: 100%; height: 100%; object-fit: cover; }
+.labkom-selected-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 14px 14px; }
+.labkom-selected-meta div { padding: 9px; border: 1px solid var(--lab-line); border-radius: 8px; background: var(--lab-panel-2); }
+.labkom-selected-meta span { display: block; color: var(--lab-text-3); font-size: 8.5px; text-transform: uppercase; letter-spacing: .05em; }
+.labkom-selected-meta strong { display: block; margin-top: 4px; overflow: hidden; color: var(--lab-text); font: 10px "IBM Plex Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 0 14px 14px; }
+.labkom-quick-grid button { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--lab-line); border-radius: 8px; background: var(--lab-panel-2); color: var(--lab-text-2); font-size: 9px; }
+.labkom-quick-grid button:hover { transform: translateY(-1px); border-color: var(--lab-line-strong); background: var(--lab-elev); color: var(--lab-text); }
+.labkom-quick-grid button.is-danger { color: var(--lab-red); }
+.labkom-quick-grid button.is-active { border-color: rgba(255, 200, 61, .45); background: rgba(255, 200, 61, .12); color: var(--lab-yellow); }
+.labkom-quick-grid button:disabled { cursor: not-allowed; opacity: .38; transform: none; }
+.labkom-quick-grid svg { width: 16px; height: 16px; }
+
+.labkom-remote { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 310px; }
+.labkom-remote-stage { min-width: 0; display: flex; flex-direction: column; background: #050910; }
+.labkom-remote-toolbar { height: 55px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--lab-line); background: var(--lab-screen); }
+.labkom-remote-toolbar .identity { min-width: 0; flex: 1; }
+.labkom-remote-toolbar strong { display: block; color: var(--lab-text); font-size: 12px; }
+.labkom-remote-toolbar span { display: block; color: var(--lab-text-3); font: 9px "IBM Plex Mono", monospace; }
+.labkom-remote-screen { min-height: 0; flex: 1; display: grid; place-items: center; padding: 24px; }
+.labkom-remote-screen img { max-width: 100%; max-height: 100%; border: 1px solid var(--lab-line); border-radius: 8px; object-fit: contain; box-shadow: 0 24px 70px rgba(0, 0, 0, .45); }
+.labkom-remote-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--lab-text-3); font-size: 11px; }
+.labkom-remote-empty svg { width: 48px; height: 48px; opacity: .45; }
+.labkom-remote-controls { display: flex; justify-content: center; gap: 7px; padding: 10px; border-top: 1px solid var(--lab-line); background: var(--lab-screen); }
+.labkom-remote-side { overflow-y: auto; border-left: 1px solid var(--lab-line); background: var(--lab-panel); }
+
+.labkom-legacy-surface {
+  height: 100%;
+  overflow-y: auto;
+  background: var(--lab-screen) !important;
+  color: var(--lab-text);
+}
+
+.labkom-legacy-surface :where(.bg-white) { background-color: var(--lab-panel-2) !important; }
+.labkom-legacy-surface :where(.bg-slate-50, .bg-slate-100, .bg-\[\#eef3f9\]) { background-color: var(--lab-panel) !important; }
+.labkom-legacy-surface :where(.border-slate-100, .border-slate-200, .border-slate-300) { border-color: var(--lab-line) !important; }
+.labkom-legacy-surface :where(.text-slate-900, .text-slate-800, .text-slate-700) { color: var(--lab-text) !important; }
+.labkom-legacy-surface :where(.text-slate-600, .text-slate-500, .text-slate-400) { color: var(--lab-text-2) !important; }
+.labkom-legacy-surface input,
+.labkom-legacy-surface select,
+.labkom-legacy-surface textarea { border-color: var(--lab-line) !important; background: var(--lab-panel) !important; color: var(--lab-text) !important; }
+.labkom-legacy-surface .bg-blue-600 { background-color: var(--lab-yellow) !important; color: #1a1407 !important; }
+
+.labkom-primary {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 1px solid var(--lab-yellow);
+  border-radius: 8px;
+  background: var(--lab-yellow);
+  color: #1a1407;
+  font-size: 11px;
+  font-weight: 700;
+}
+.labkom-primary:hover { background: var(--lab-yellow-2); }
+.labkom-primary:disabled { cursor: not-allowed; opacity: .45; }
+.labkom-primary svg,
+.labkom-action svg,
+.labkom-search svg { width: 15px; height: 15px; }
+
+.labkom-segmented { display: inline-flex; padding: 3px; border: 1px solid var(--lab-line); border-radius: 9px; background: var(--lab-panel); }
+.labkom-segmented button { min-height: 32px; display: inline-flex; align-items: center; gap: 7px; padding: 0 12px; border-radius: 6px; color: var(--lab-text-2); font-size: 10px; font-weight: 700; }
+.labkom-segmented button:hover { color: var(--lab-text); }
+.labkom-segmented button.is-active { background: var(--lab-yellow); color: #1a1407; }
+.labkom-segmented svg { width: 13px; height: 13px; }
+
+.labkom-page-heading { min-height: 58px; display: flex; align-items: center; gap: 14px; padding: 10px 16px; border-bottom: 1px solid var(--lab-line); }
+.labkom-page-heading > div:first-child { min-width: 0; }
+.labkom-page-heading h2 { margin: 0; color: var(--lab-text); font-size: 14px; }
+.labkom-page-heading p { margin: 3px 0 0; color: var(--lab-text-3); font-size: 10px; }
+.labkom-page-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; }
+.labkom-page-actions .labkom-search { width: 180px; }
+
+.labkom-data-table { width: 100%; border-collapse: collapse; color: var(--lab-text-2); font-size: 10.5px; }
+.labkom-data-table thead { position: sticky; top: 0; z-index: 2; background: var(--lab-screen); }
+.labkom-data-table th { height: 34px; padding: 0 14px; border-bottom: 1px solid var(--lab-line); color: var(--lab-text-3); font-size: 8.5px; font-weight: 600; letter-spacing: .06em; text-align: left; text-transform: uppercase; }
+.labkom-data-table td { height: 48px; padding: 7px 14px; border-bottom: 1px solid var(--lab-line); }
+.labkom-data-table tbody tr { transition: 120ms ease; }
+.labkom-data-table tbody tr:hover { background: rgba(90, 162, 255, .04); }
+.labkom-mono { color: var(--lab-text-2); font-family: "IBM Plex Mono", monospace; font-size: 9.5px; }
+.labkom-empty { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--lab-text-3); font-size: 11px; }
+.labkom-empty svg { width: 18px; height: 18px; }
+
+.labkom-status { display: inline-flex; align-items: center; min-height: 23px; padding: 0 8px; border-radius: 6px; background: var(--lab-elev); color: var(--lab-text-2); font-size: 9px; font-weight: 700; white-space: nowrap; }
+.labkom-status.is-ready { background: rgba(100, 119, 147, .15); color: var(--lab-text-3); }
+.labkom-status.is-in-progress { background: rgba(244, 183, 64, .13); color: var(--lab-amber); }
+.labkom-status.is-delivered,
+.labkom-status.is-opened,
+.labkom-status.is-submitted { background: rgba(63, 208, 138, .12); color: var(--lab-green); }
+.labkom-status.is-failed { background: rgba(255, 107, 107, .12); color: var(--lab-red); }
+
+/* Files */
+.labkom-files-view { height: 100%; display: flex; flex-direction: column; overflow: hidden; background: var(--lab-screen); }
+.labkom-file-toolbar { min-height: 74px; display: flex; align-items: center; gap: 10px; padding: 11px 16px; border-bottom: 1px solid var(--lab-line); }
+.labkom-file-pill { min-width: 230px; display: flex; align-items: center; gap: 9px; padding: 8px 10px; border: 1px solid var(--lab-line); border-radius: 9px; background: var(--lab-panel); text-align: left; }
+.labkom-file-pill:hover { border-color: var(--lab-line-strong); background: var(--lab-panel-2); }
+.labkom-file-pill > svg { width: 25px; height: 25px; padding: 4px; border-radius: 6px; background: rgba(255, 200, 61, .11); color: var(--lab-yellow); }
+.labkom-file-pill span { min-width: 0; }
+.labkom-file-pill strong,
+.labkom-file-pill small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-file-pill strong { color: var(--lab-text); font-size: 10.5px; }
+.labkom-file-pill small { margin-top: 3px; color: var(--lab-text-3); font-size: 8.5px; }
+.labkom-file-pill input { width: 170px; margin-top: 3px; border: 0; border-bottom: 1px solid var(--lab-line); border-radius: 0; background: transparent; color: var(--lab-text); font-size: 10px; outline: none; }
+.labkom-file-arrow { color: var(--lab-text-3); }
+.labkom-target-pill { display: flex; align-items: center; gap: 8px; padding: 9px 11px; border: 1px solid var(--lab-line); border-radius: 9px; background: var(--lab-panel); color: var(--lab-text-2); font-size: 10px; font-weight: 600; }
+.labkom-target-pill svg { width: 15px; height: 15px; color: var(--lab-text-3); }
+.labkom-file-toolbar-actions { margin-left: auto; display: flex; gap: 7px; }
+.labkom-file-summary { min-height: 52px; display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--lab-line); }
+.labkom-file-metrics { display: flex; align-items: center; gap: 14px; }
+.labkom-file-metrics span { display: flex; align-items: center; gap: 4px; color: var(--lab-text-2); font-size: 10px; }
+.labkom-file-metrics svg { width: 14px; height: 14px; }
+.labkom-file-metrics .is-green svg,
+.labkom-file-metrics .is-green strong { color: var(--lab-green); }
+.labkom-file-metrics .is-yellow svg,
+.labkom-file-metrics .is-yellow strong { color: var(--lab-yellow); }
+.labkom-file-summary .labkom-search { margin-left: auto; width: 175px; }
+.labkom-file-table-wrap { min-height: 0; flex: 1; overflow: auto; }
+.labkom-file-table th:nth-child(1) { width: 115px; }
+.labkom-file-table th:nth-child(2) { width: 34%; }
+.labkom-file-table th:nth-child(3) { width: 130px; }
+.labkom-file-table th:nth-child(5) { width: 90px; }
+.labkom-file-table th:last-child { width: 45px; }
+.labkom-student-cell { display: inline-flex; align-items: center; gap: 8px; }
+.labkom-student-cell b { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 7px; background: #17325a; color: #cfe0ff; font-size: 8px; }
+.labkom-student-cell strong { color: var(--lab-text); font-size: 10.5px; }
+.labkom-progress { display: flex; align-items: center; gap: 7px; }
+.labkom-progress { min-width: 140px; }
+.labkom-progress > div { min-width: 0; flex: 1; height: 5px; overflow: hidden; border-radius: 99px; background: var(--lab-elev); }
+.labkom-progress > div > span { display: block; height: 100%; max-width: 100%; border-radius: 99px; background: var(--lab-yellow); box-shadow: 0 0 8px rgba(255, 200, 61, .16); }
+.labkom-progress small { margin-left: auto; color: var(--lab-text-3); font: 8px "IBM Plex Mono", monospace; }
+.labkom-icon-button { width: 30px; min-height: 30px; padding: 0; }
+.labkom-icon-button svg { width: 14px; height: 14px; }
+
+/* Register */
+.labkom-register-view { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 340px; overflow: hidden; background: var(--lab-screen); }
+.labkom-register-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.labkom-register-table-wrap { min-height: 0; flex: 1; overflow: auto; }
+.labkom-register-table tbody tr { cursor: pointer; }
+.labkom-register-table tbody tr.is-selected { background: rgba(90, 162, 255, .07); }
+.labkom-register-table th:first-child { width: 100px; }
+.labkom-register-table th:nth-child(3),
+.labkom-register-table th:nth-child(4) { width: 95px; }
+.labkom-register-table th:nth-child(5),
+.labkom-register-table th:nth-child(6) { width: 120px; }
+.labkom-register-student { display: flex; align-items: center; gap: 8px; }
+.labkom-register-student > i { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--lab-text-3); }
+.labkom-register-student > i.is-online { background: var(--lab-green); }
+.labkom-register-student > i.is-issue { background: var(--lab-amber); }
+.labkom-register-student strong,
+.labkom-register-student small { display: block; }
+.labkom-register-student strong { color: var(--lab-text); font-size: 10.5px; }
+.labkom-register-student small { margin-top: 2px; color: var(--lab-text-3); font: 8.5px "IBM Plex Mono", monospace; }
+.labkom-register-detail { overflow-y: auto; border-left: 1px solid var(--lab-line); background: var(--lab-panel); }
+.labkom-register-profile { min-height: 68px; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--lab-line); }
+.labkom-register-profile > b { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 38px; border-radius: 10px; background: rgba(255, 107, 107, .1); color: #ff9b9b; font-size: 11px; }
+.labkom-register-profile span { min-width: 0; flex: 1; }
+.labkom-register-profile strong,
+.labkom-register-profile small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-register-profile strong { color: var(--lab-text); font-size: 12px; }
+.labkom-register-profile small { margin-top: 3px; color: var(--lab-text-3); font: 8.5px "IBM Plex Mono", monospace; }
+.labkom-register-profile em { padding: 5px 7px; border-radius: 6px; background: rgba(63, 208, 138, .1); color: var(--lab-green); font-size: 8.5px; font-style: normal; font-weight: 700; }
+.labkom-register-profile em.is-issue { background: rgba(255, 107, 107, .12); color: var(--lab-red); }
+.labkom-detail-kicker { margin: 0; padding: 13px 14px 8px; color: var(--lab-text-3); font-size: 8.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
+.labkom-condition-list { padding: 0 14px; }
+.labkom-condition-list > div { display: flex; align-items: center; gap: 9px; min-height: 48px; border-bottom: 1px solid var(--lab-line); }
+.labkom-condition-list > div > span { width: 25px; height: 25px; display: grid; place-items: center; flex: 0 0 25px; border-radius: 7px; background: rgba(63, 208, 138, .1); color: var(--lab-green); }
+.labkom-condition-list > div.is-bad > span { background: rgba(255, 107, 107, .11); color: var(--lab-red); }
+.labkom-condition-list svg { width: 13px; height: 13px; }
+.labkom-condition-icon { color: var(--lab-text-3); }
+.labkom-condition-list p { margin: 0; }
+.labkom-condition-list strong,
+.labkom-condition-list small { display: block; }
+.labkom-condition-list strong { color: var(--lab-text); font-size: 10.5px; }
+.labkom-condition-list small { margin-top: 2px; color: var(--lab-text-3); font-size: 8.5px; }
+.labkom-condition-list .is-bad small { color: #ff9b9b; }
+.labkom-student-note { margin: 12px 14px; overflow: hidden; border: 1px solid var(--lab-line); border-radius: 10px; background: var(--lab-panel-2); }
+.labkom-student-note h3 { display: flex; align-items: center; gap: 7px; margin: 0; padding: 10px; border-bottom: 1px solid var(--lab-line); color: var(--lab-text); font-size: 10px; }
+.labkom-student-note h3 svg { width: 13px; height: 13px; color: var(--lab-yellow); }
+.labkom-student-note p { margin: 0; padding: 11px; color: var(--lab-text-2); font-size: 9px; line-height: 1.55; }
+.labkom-post-status { display: flex; align-items: center; gap: 8px; margin: 0 14px 14px; padding: 11px; border: 1px dashed var(--lab-line-strong); border-radius: 9px; color: var(--lab-text-3); font-size: 9.5px; }
+.labkom-post-status svg { width: 14px; height: 14px; }
+
+/* Reports */
+.labkom-reports-view { height: 100%; overflow-y: auto; background: var(--lab-screen); }
+.labkom-period-tabs button { padding: 0 13px; }
+.labkom-report-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; padding: 12px 16px 8px; }
+.labkom-report-stats article { position: relative; min-height: 88px; padding: 14px; overflow: hidden; border: 1px solid var(--lab-line); border-radius: 10px; background: var(--lab-panel); }
+.labkom-report-stats article > svg { position: absolute; right: 12px; top: 12px; width: 17px; height: 17px; color: var(--lab-text-3); opacity: .65; }
+.labkom-report-stats span,
+.labkom-report-stats strong,
+.labkom-report-stats small { display: block; }
+.labkom-report-stats span { color: var(--lab-text-2); font-size: 9px; }
+.labkom-report-stats strong { margin-top: 8px; color: var(--lab-text); font: 700 22px/1 "IBM Plex Mono", monospace; }
+.labkom-report-stats strong.is-yellow { color: var(--lab-yellow); }
+.labkom-report-stats strong.is-red { color: var(--lab-red); }
+.labkom-report-stats small { margin-top: 8px; color: var(--lab-text-3); font-size: 8.5px; }
+.labkom-report-stats small.is-good { color: var(--lab-green); }
+.labkom-report-grid { display: grid; grid-template-columns: 1.05fr 1.65fr; gap: 10px; padding: 8px 16px 12px; }
+.labkom-report-panel { min-height: 182px; padding: 14px; border: 1px solid var(--lab-line); border-radius: 11px; background: var(--lab-panel); }
+.labkom-report-panel h3 { display: flex; align-items: center; justify-content: space-between; margin: 0 0 14px; color: var(--lab-text); font-size: 10.5px; }
+.labkom-report-panel h3 svg { width: 14px; height: 14px; color: var(--lab-text-3); }
+.labkom-report-bars { display: flex; flex-direction: column; gap: 9px; }
+.labkom-report-bars > div { display: grid; grid-template-columns: 22px 120px minmax(60px, 1fr) 34px; align-items: center; gap: 7px; }
+.labkom-report-bars b { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 5px; background: #174478; color: #d9e8ff; font-size: 8px; }
+.labkom-report-bars span { overflow: hidden; color: var(--lab-text-2); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-report-bars progress { width: 100%; height: 6px; border: 0; border-radius: 99px; overflow: hidden; background: var(--lab-elev); accent-color: var(--lab-yellow); }
+.labkom-report-bars progress::-webkit-progress-bar { background: var(--lab-elev); }
+.labkom-report-bars progress::-webkit-progress-value { border-radius: 99px; background: var(--lab-yellow); }
+.labkom-report-bars strong { color: var(--lab-text); font: 8.5px "IBM Plex Mono", monospace; text-align: right; }
+.labkom-site-bars > div { grid-template-columns: 125px minmax(60px, 1fr) 34px; }
+.labkom-site-bars > div.is-blocked span,
+.labkom-site-bars > div.is-blocked strong { color: var(--lab-red); }
+.labkom-site-bars > div.is-blocked progress { accent-color: var(--lab-red); }
+.labkom-site-bars > div.is-blocked progress::-webkit-progress-value { background: var(--lab-red); }
+.labkom-report-empty { margin: 22px 0; color: var(--lab-text-3); font-size: 9px; text-align: center; }
+.labkom-hour-chart { height: 128px; display: grid; grid-template-columns: repeat(7, 1fr); align-items: end; gap: 8px; padding-top: 8px; }
+.labkom-hour-chart > div { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; }
+.labkom-hour-chart span { width: 100%; min-height: 8px; border-radius: 7px 7px 2px 2px; background: var(--lab-yellow); opacity: .88; }
+.labkom-hour-chart small { color: var(--lab-text-3); font: 8px "IBM Plex Mono", monospace; }
+.labkom-attendance-summary { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 18px; }
+.labkom-attendance-summary > div { display: flex; flex-direction: column; align-items: center; justify-content: center; aspect-ratio: 1; border: 12px solid var(--lab-yellow); border-radius: 50%; background: var(--lab-screen); }
+.labkom-attendance-summary > div strong { color: var(--lab-text); font: 700 20px "IBM Plex Mono", monospace; }
+.labkom-attendance-summary > div strong small { color: var(--lab-text-3); font-size: 10px; }
+.labkom-attendance-summary > div span { color: var(--lab-text-3); font-size: 9px; }
+.labkom-attendance-summary ul { margin: 0; padding: 0; list-style: none; }
+.labkom-attendance-summary li { display: flex; align-items: center; gap: 7px; padding: 5px 0; color: var(--lab-text-2); font-size: 9px; }
+.labkom-attendance-summary li i { width: 20px; height: 20px; flex: 0 0 20px; border-radius: 6px; background: rgba(255, 107, 107, .12); }
+.labkom-attendance-summary li i.is-1 { background: rgba(90, 162, 255, .12); }
+.labkom-attendance-summary li i.is-2 { background: rgba(255, 200, 61, .12); }
+.labkom-attendance-summary li strong { color: var(--lab-text); }
+.labkom-report-footnote { display: flex; align-items: center; gap: 7px; margin: 0 16px 16px; color: var(--lab-text-3); font-size: 8.5px; }
+.labkom-report-footnote svg { width: 13px; height: 13px; }
+
+@media print {
+  body[data-print-view="reports"] .labkom-header,
+  body[data-print-view="reports"] .labkom-rail { display: none !important; }
+  body[data-print-view="reports"] .labkom-reports-view { height: auto; overflow: visible; }
+  body[data-print-view="reports"] .labkom-body { display: block; }
+}
+
+@media (max-width: 1220px) {
+  .labkom-brand { min-width: auto; }
+  .labkom-brand div { display: none; }
+  .labkom-pc-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .labkom-monitor { grid-template-columns: minmax(0, 1fr) 320px; }
+  .labkom-action span { display: none; }
+  .labkom-file-pill { min-width: 190px; }
+  .labkom-target-pill span { display: none; }
+  .labkom-register-view { grid-template-columns: minmax(0, 1fr) 310px; }
+}
+
+@media (max-width: 1020px) {
+  .labkom-session { min-width: 210px; }
+  .labkom-pc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .labkom-monitor { grid-template-columns: minmax(0, 1fr) 290px; }
+  .labkom-file-toolbar { flex-wrap: wrap; }
+  .labkom-file-toolbar-actions { margin-left: 0; }
+  .labkom-report-grid { grid-template-columns: 1fr; }
+}

@@ -15,6 +15,9 @@ import ActivityMonitor from './components/ActivityMonitor.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import ScreenShareAdmin from './components/ScreenShareAdmin.jsx';
 import AttentionModeButton from './components/AttentionModeButton.jsx';
+import FilesWorkspace from './components/FilesWorkspace.jsx';
+import RegisterWorkspace from './components/RegisterWorkspace.jsx';
+import ReportsWorkspace from './components/ReportsWorkspace.jsx';
 
 // Di Electron production, window load dari file:// sehingga fetch relatif gagal.
 // Deteksi protokol: file:// → pakai absolute URL ke server lokal.
@@ -22,6 +25,78 @@ const API = (typeof window !== 'undefined' && window.location.protocol === 'file
   ? 'http://localhost:3001'
   : '';  // dev mode: Vite proxy arahkan /api → localhost:3001
 const REALTIME_API = API || 'http://localhost:3001';
+const DEMO_MODE = import.meta.env.DEV
+  && new URLSearchParams(window.location.search).get('demo') === '1';
+
+const DEMO_NAMES = [
+  'Adi Nugroho', 'Bagas Pratama', 'Citra Lestari', 'Dewi Anggraini', 'Eka Saputra',
+  'Fajar Ramadhan', 'Gita Permata', 'Hadi Wijaya', 'Indah Sari', 'Joko Susilo',
+  'Kiki Amelia', 'Lia Kusuma', 'Maya Putri', 'Naufal Hakim', 'Oki Setiawan',
+  'Putri Rahayu', 'Qori Hidayat', 'Rina Wulandari', 'Sandi Kurnia', 'Tono Hartono',
+  'Umar Faruq', 'Vina Oktavia', 'Wahyu Saputra', 'Galang Pratomo', 'Yusuf Abdullah',
+  'Zahra Aulia', 'Bayu Aditya', 'Cinta Dewi', 'Dimas Prayoga', 'Elsa Permata',
+];
+
+const DEMO_PCS = DEMO_NAMES.map((name, index) => {
+  const number = String(index + 1).padStart(2, '0');
+  const status = [21, 27].includes(index) ? 'offline' : [8, 18].includes(index) ? 'locked' : 'active';
+  return {
+    id: `PC-LAB-${number}`,
+    actual_pc_name: `PC-LAB-${number}`,
+    status,
+    ip: `10.21.4.${index + 10}`,
+    loginTime: '09:02',
+    duration: `${42 + index} mnt`,
+    last_seen: Date.now() - index * 45000,
+    student: status === 'offline' ? null : {
+      name,
+      nama_lengkap: name,
+      nis: `SPH-23${1400 + index}`,
+      kelas: 'X RPL 1',
+    },
+  };
+});
+
+const DEMO_CHECKS = DEMO_PCS.filter((pc) => pc.student).map((pc, index) => {
+  const hasIssue = index === 8;
+  return {
+    id: `demo-check-${index + 1}`,
+    pc_name: pc.id,
+    nama_lengkap: pc.student.nama_lengkap,
+    nis: pc.student.nis,
+    kelas: pc.student.kelas,
+    check_type: 'pre',
+    date_str: '14 Jul 2026',
+    time_str: `07:${String(28 + index).padStart(2, '0')}`,
+    has_issue: hasIssue,
+    monitor_status: 'good',
+    monitor_note: null,
+    keyboard_status: 'good',
+    keyboard_note: null,
+    mouse_status: hasIssue ? 'bad' : 'good',
+    mouse_note: hasIssue ? 'Mouse sulit dipakai, klik kadang tidak merespons.' : null,
+    headset_status: 'good',
+    headset_note: null,
+    cpu_status: 'good',
+    cpu_note: null,
+    desk_status: 'good',
+    desk_note: null,
+  };
+});
+
+const DEMO_HISTORY = DEMO_PCS.filter((pc) => pc.student).map((pc, index) => ({
+  id: `demo-history-${index + 1}`,
+  date: '14 Jul 2026',
+  pc: pc.id,
+  name: pc.student.nama_lengkap,
+  nis: pc.student.nis,
+  kelas: pc.student.kelas,
+  login: `07:${String(28 + index).padStart(2, '0')}`,
+  logout: '—',
+  duration: pc.duration,
+  status: 'active',
+  type: 'Sesi aktif',
+}));
 
 // ─── Banner IP Server (tampil di header) ──────────────────────────────────
 function ServerInfoBanner({ info }) {
@@ -159,10 +234,14 @@ async function apiFetch(path, opts = {}) {
 
 // ─── Toast sederhana ───────────────────────────────────────────────────────
 function Toast({ message, type, onClose }) {
+  const onCloseRef = useRef(onClose);
   useEffect(() => {
-    const t = setTimeout(onClose, 3500);
-    return () => clearTimeout(t);
+    onCloseRef.current = onClose;
   }, [onClose]);
+  useEffect(() => {
+    const t = setTimeout(() => onCloseRef.current?.(), 3500);
+    return () => clearTimeout(t);
+  }, [message, type]);
   const colors = type === 'error'
     ? 'bg-red-600 text-white'
     : 'bg-emerald-600 text-white';
@@ -177,8 +256,8 @@ function Toast({ message, type, onClose }) {
 // ═══════════════════════════════════════════════════════════════════════════
 export default function AdminDashboard() {
   const [adminPassword, setAdminPassword] = useState('');
-  const [authReady, setAuthReady] = useState(false);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(DEMO_MODE);
+  const [authLoading, setAuthLoading] = useState(!DEMO_MODE);
   const [authError, setAuthError] = useState('');
   const [activeTab, setActiveTab] = useState('monitoring');
   const [currentTime, setCurrentTime] = useState(new Date());
@@ -254,6 +333,11 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     async function bootstrapAuth() {
+      if (DEMO_MODE) {
+        setAuthReady(true);
+        setAuthLoading(false);
+        return;
+      }
       const token = sessionStorage.getItem('admin_token');
       if (!token) {
         setAuthReady(false);
@@ -277,6 +361,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
+    if (DEMO_MODE) return undefined;
     if (!authReady) return;
     const t = setInterval(() => {
       if (!sessionStorage.getItem('admin_token')) {
@@ -287,6 +372,7 @@ export default function AdminDashboard() {
   }, [authReady]);
 
   useEffect(() => {
+    if (DEMO_MODE) return undefined;
     if (!authReady) return;
     const refreshInterval = setInterval(() => {
       refreshAdminToken();
@@ -328,10 +414,17 @@ export default function AdminDashboard() {
   const [screensLoading, setScreensLoading] = useState(false);
   const [focusedScreen, setFocusedScreen]   = useState(null); // pc_name for fullscreen modal
   const realtimeSocketRef = useRef(null);
+  const [realtimeSocket, setRealtimeSocket] = useState(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const [policyStatusByPc, setPolicyStatusByPc] = useState({});
   const focusedScreenRef = useRef(null);
   const screensRequestRef = useRef(null);
 
   const fetchScreens = useCallback(async (silent = false) => {
+    if (DEMO_MODE) {
+      setScreensLoading(false);
+      return;
+    }
     if (!silent) setScreensLoading(true);
     screensRequestRef.current?.abort?.();
     const controller = new AbortController();
@@ -382,16 +475,25 @@ export default function AdminDashboard() {
   }, [activeTab]);
 
   // ── Monitoring ────────────────────────────────────────────────────────
-  const [pcs,        setPcs]        = useState([]);
-  const [pcsLoading, setPcsLoading] = useState(true);
+  const [pcs,        setPcs]        = useState(DEMO_MODE ? DEMO_PCS : []);
+  const [pcsLoading, setPcsLoading] = useState(!DEMO_MODE);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [selectedPc,      setSelectedPc]      = useState(null);
+  const [monitorSelectedPc, setMonitorSelectedPc] = useState(null);
+  const [monitorSearch, setMonitorSearch] = useState('');
+  const [monitorFilter, setMonitorFilter] = useState('all');
+  const [attentionTargets, setAttentionTargets] = useState({});
   const [controlModalPc,  setControlModalPc]  = useState(null);
   const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
   const pollingRef = useRef(null);
   const monitoringRefreshTimerRef = useRef(null);
 
   const fetchPcs = useCallback(async (silent = false) => {
+    if (DEMO_MODE) {
+      setPcs(DEMO_PCS);
+      setPcsLoading(false);
+      return;
+    }
     if (!silent) setPcsLoading(true);
     try {
       const data = await apiFetch('/api/monitoring/pcs');
@@ -418,7 +520,7 @@ export default function AdminDashboard() {
     try {
       const data = await apiFetch('/api/monitoring/force-logout', {
         method: 'POST',
-        body: JSON.stringify({ pc_name: selectedPc.id }),
+        body: JSON.stringify({ pc_name: selectedPc.actual_pc_name || selectedPc.id }),
       });
       if (data.success) {
         showToast(`${selectedPc.id}: ${selectedPc.student?.name} berhasil dikeluarkan.`);
@@ -448,6 +550,9 @@ export default function AdminDashboard() {
   const [clientMacs,  setClientMacs]  = useState([]);           // [{pc_name, mac, ip}]
   const [wolBusy,     setWolBusy]     = useState({});           // {pc_name: bool}
   const [confirmKillAll, setConfirmKillAll] = useState(null);   // null | 'temp' | 'perm'
+  const [showPowerMenu, setShowPowerMenu] = useState(false);
+  const [confirmSystemCommand, setConfirmSystemCommand] = useState(null);
+  const [systemCommandBusy, setSystemCommandBusy] = useState(false);
   const [mappingBusy, setMappingBusy] = useState({});
   const [mappingSelections, setMappingSelections] = useState({});
 
@@ -463,9 +568,12 @@ export default function AdminDashboard() {
   }, [activeTab, refreshClientMacs]);
 
   useEffect(() => {
+    if (DEMO_MODE) return undefined;
     if (!authReady) {
       realtimeSocketRef.current?.disconnect?.();
       realtimeSocketRef.current = null;
+      setRealtimeSocket(null);
+      setRealtimeConnected(false);
       return;
     }
 
@@ -481,8 +589,10 @@ export default function AdminDashboard() {
     });
 
     realtimeSocketRef.current = socket;
+    setRealtimeSocket(socket);
 
     socket.on('connect', () => {
+      setRealtimeConnected(true);
       if (focusedScreenRef.current) {
         socket.emit('admin:watch-screen', { pc_name: focusedScreenRef.current });
       }
@@ -517,6 +627,18 @@ export default function AdminDashboard() {
       }, 400);
     });
 
+    socket.on('client:policy-status', (payload = {}) => {
+      if (!payload.pc_name) return;
+      setPolicyStatusByPc((previous) => ({ ...previous, [payload.pc_name]: payload }));
+    });
+
+    socket.on('client:system-command-ack', (payload = {}) => {
+      if (!payload.pc_name || !payload.command) return;
+      showToast(`${payload.pc_name}: ${payload.success ? 'perintah diterima' : 'perintah gagal'} (${payload.command}).`, payload.success ? 'success' : 'error');
+    });
+
+    socket.on('disconnect', () => setRealtimeConnected(false));
+
     socket.on('connect_error', (err) => {
       console.warn('realtime socket failed:', err?.message || err);
     });
@@ -530,6 +652,8 @@ export default function AdminDashboard() {
       socket.disconnect();
       if (realtimeSocketRef.current === socket) {
         realtimeSocketRef.current = null;
+        setRealtimeSocket(null);
+        setRealtimeConnected(false);
       }
     };
   }, [authReady, fetchPcs, refreshClientMacs]);
@@ -579,6 +703,71 @@ export default function AdminDashboard() {
       }
     } catch { showToast('Gagal mengirim perintah.', 'error'); }
     setRemoteBusy(false);
+  };
+
+  const toggleTargetAttention = (pc) => {
+    const target = pc.actual_pc_name || pc.id;
+    const enabled = !attentionTargets[target];
+    const socket = realtimeSocketRef.current;
+    if (DEMO_MODE) {
+      setAttentionTargets((previous) => ({ ...previous, [target]: enabled }));
+      showToast(`${enabled ? 'Blank screen' : 'Blank screen dilepas'} untuk ${pc.id}.`);
+      return;
+    }
+    if (!socket?.connected) {
+      showToast('Server realtime belum terhubung.', 'error');
+      return;
+    }
+    socket.emit('admin:attention-mode', {
+      enabled,
+      message: 'Mohon perhatian ke instruktur',
+      target,
+    });
+    setAttentionTargets((previous) => ({ ...previous, [target]: enabled }));
+    showToast(`${enabled ? 'Blank screen diaktifkan' : 'Blank screen dilepas'} untuk ${pc.id}.`);
+  };
+
+  const downloadScreenSnapshot = (pc) => {
+    const screen = getScreenForPc(pc);
+    if (!screen?.image) {
+      showToast('Snapshot layar belum tersedia.', 'error');
+      return;
+    }
+    const anchor = document.createElement('a');
+    anchor.href = screen.image;
+    anchor.download = `${pc.id}-${new Date().toISOString().replace(/[:.]/g, '-')}.jpg`;
+    anchor.click();
+    showToast(`Snapshot ${pc.id} disimpan.`);
+  };
+
+  const handleSystemCommand = async () => {
+    const request = confirmSystemCommand;
+    if (!request) return;
+    setSystemCommandBusy(true);
+    if (DEMO_MODE) {
+      showToast(`Simulasi perintah ${request.label.toLowerCase()} ke ${request.target === 'all' ? 'semua PC' : request.target}.`);
+      setConfirmSystemCommand(null);
+      setSystemCommandBusy(false);
+      return;
+    }
+    const socket = realtimeSocketRef.current;
+    if (!socket?.connected) {
+      showToast('Server realtime belum terhubung.', 'error');
+      setSystemCommandBusy(false);
+      return;
+    }
+    socket.timeout(10_000).emit('admin:system-command', {
+      command: request.command,
+      target: request.target,
+    }, (error, response) => {
+      setSystemCommandBusy(false);
+      if (error || !response?.success) {
+        showToast(response?.error || 'Perintah sistem gagal dikirim.', 'error');
+        return;
+      }
+      showToast(`${request.label} dikirim ke ${response.count} PC.`);
+      setConfirmSystemCommand(null);
+    });
   };
 
   const handleWakeOnLan = async (mac, pc_name) => {
@@ -692,14 +881,22 @@ export default function AdminDashboard() {
   );
 
   // ── History ───────────────────────────────────────────────────────────
-  const [history,      setHistory]    = useState([]);
+  const [history,      setHistory]    = useState(DEMO_MODE ? DEMO_HISTORY : []);
   const [histLoading,  setHistLoading]= useState(false);
   const [histDate,     setHistDate]   = useState('');
   const [histPage,     setHistPage]   = useState(1);
-  const [histTotal,    setHistTotal]  = useState(0);
+  const [histTotal,    setHistTotal]  = useState(DEMO_MODE ? DEMO_HISTORY.length : 0);
+  const [reportData, setReportData] = useState({ topApps: [], topSites: [], timeline: [] });
   const HIST_LIMIT = 20;
 
   const fetchHistory = useCallback(async (pg = 1) => {
+    if (DEMO_MODE) {
+      setHistory(DEMO_HISTORY);
+      setHistTotal(DEMO_HISTORY.length);
+      setHistPage(1);
+      setHistLoading(false);
+      return;
+    }
     setHistLoading(true);
     try {
       const params = new URLSearchParams({ page: pg, limit: HIST_LIMIT });
@@ -714,9 +911,43 @@ export default function AdminDashboard() {
     finally { setHistLoading(false); }
   }, [histDate]);
 
+  const fetchReportData = useCallback(async (period = 'today') => {
+    if (DEMO_MODE) return;
+    try {
+      const end = new Date();
+      const start = new Date(end);
+      const bucketCount = period === 'today' ? 12 : period === 'week' ? 7 : 6;
+      if (period === 'today') start.setHours(0, 0, 0, 0);
+      else if (period === 'week') start.setDate(start.getDate() - 6);
+      else start.setDate(start.getDate() - 29);
+      const query = new URLSearchParams({
+        limit: '5',
+        date_from: start.toISOString(),
+        date_to: end.toISOString(),
+      });
+      const timelineQuery = new URLSearchParams(query);
+      timelineQuery.set('bucket_count', String(bucketCount));
+      const [apps, sites, timeline] = await Promise.all([
+        apiFetch(`/api/activities/top-apps?${query}`),
+        apiFetch(`/api/activities/top-sites?${query}`),
+        apiFetch(`/api/activities/timeline?${timelineQuery}`),
+      ]);
+      setReportData({
+        topApps: apps?.success ? (apps.top_apps || []) : [],
+        topSites: sites?.success ? (sites.top_sites || []) : [],
+        timeline: timeline?.success ? (timeline.timeline || []) : [],
+      });
+    } catch {
+      setReportData({ topApps: [], topSites: [], timeline: [] });
+    }
+  }, []);
+
   useEffect(() => {
-    if (activeTab === 'history') fetchHistory(1);
-  }, [activeTab, fetchHistory]);
+    if (activeTab === 'history') {
+      fetchHistory(1);
+      fetchReportData();
+    }
+  }, [activeTab, fetchHistory, fetchReportData]);
 
   // ── Control Settings ──────────────────────────────────────────────────
   const [ctrlLoading, setCtrlLoading] = useState(false);
@@ -752,7 +983,7 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'control') loadSettings();
+    if (activeTab === 'control' && !DEMO_MODE) loadSettings();
   }, [activeTab, loadSettings]);
 
   const saveSettings = async (extra = {}) => {
@@ -773,7 +1004,7 @@ export default function AdminDashboard() {
         method: 'POST',
         body: JSON.stringify(payload),
       });
-      if (data.success) showToast('Pengaturan berhasil disimpan.');
+      if (data.success) showToast(`Pengaturan disimpan dan dikirim ke ${data.pushed_to ?? 0} client.`);
       else showToast(data.message, 'error');
     } catch { showToast('Koneksi ke server gagal.', 'error'); }
     finally { setCtrlSaving(false); }
@@ -786,12 +1017,12 @@ export default function AdminDashboard() {
   }, []);
 
   // ── Pengecekan Fasilitas ──────────────────────────────────────────────
-  const [checks,       setChecks]      = useState([]);
+  const [checks,       setChecks]      = useState(DEMO_MODE ? DEMO_CHECKS : []);
   const [chkLoading,   setChkLoading]  = useState(false);
   const [chkDate,      setChkDate]     = useState('');
   const [chkType,      setChkType]     = useState('');  // '' | 'pre' | 'post'
   const [chkPage,      setChkPage]     = useState(1);
-  const [chkTotal,     setChkTotal]    = useState(0);
+  const [chkTotal,     setChkTotal]    = useState(DEMO_MODE ? DEMO_CHECKS.length : 0);
   const [expandedChk,  setExpandedChk] = useState(null); // id row yang di-expand
   const CHK_LIMIT = 30;
 
@@ -834,6 +1065,14 @@ export default function AdminDashboard() {
   }, [activeTab, authReady, fetchDeviceClaims]);
 
   const fetchChecks = useCallback(async (pg = 1) => {
+    if (DEMO_MODE) {
+      const filtered = DEMO_CHECKS.filter((check) => !chkType || check.check_type === chkType);
+      setChecks(filtered);
+      setChkTotal(filtered.length);
+      setChkPage(1);
+      setChkLoading(false);
+      return;
+    }
     setChkLoading(true);
     try {
       const params = new URLSearchParams({ page: pg, limit: CHK_LIMIT });
@@ -861,8 +1100,11 @@ export default function AdminDashboard() {
 
     // Label item berdasarkan type & key
     const itemLabels = {
-      cpu_status:          'PC / Keyboard / Mouse',
-      monitor_status:      'Monitor & Kabel',
+      cpu_status:          'CPU, Unit & Internet',
+      monitor_status:      'Monitor & Layar',
+      keyboard_status:     'Keyboard',
+      mouse_status:        'Mouse',
+      headset_status:      'Headset',
       desk_status:         'Meja & Kursi',
       hw_status:           'Perangkat Keras',
       cleanliness_status:  'Kebersihan & Kerapian',
@@ -1604,31 +1846,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Confirm Kill All modal */}
-        {confirmKillAll && (
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 duration-300">
-              <div className="flex items-center justify-center w-12 h-12 bg-red-100 rounded-full mx-auto mb-4">
-                <PowerOff className="w-6 h-6 text-red-600" />
-              </div>
-              <h3 className="text-lg font-bold text-center text-slate-800 mb-2">
-                {confirmKillAll === 'perm' ? 'Hentikan Permanen?' : 'Hentikan Sementara?'}
-              </h3>
-              <p className="text-sm text-slate-500 text-center mb-5">
-                {confirmKillAll === 'perm'
-                  ? 'Semua client ditutup dan TIDAK restart otomatis. Gunakan "Aktifkan Semua" untuk membuka kembali.'
-                  : 'Semua client ditutup. Watchdog restart otomatis dalam ≤2 menit.'}
-              </p>
-              <div className="flex space-x-3">
-                <button onClick={() => setConfirmKillAll(null)} className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl font-medium transition-colors">Batal</button>
-                <button onClick={() => handleKillAll(confirmKillAll === 'perm')} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium transition-colors">
-                  Ya, Hentikan
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ── Device Claims (per-PC token) ── */}
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
           <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -1689,14 +1906,14 @@ export default function AdminDashboard() {
               <h3 className="text-lg font-bold text-slate-800">Manajemen Daya (Massal)</h3>
             </div>
             <p className="text-sm text-slate-500 mb-4">Kirimkan perintah ke seluruh PC yang sedang Online/Terkunci.</p>
-            <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-5">
-              ⚠️ Fitur Shutdown & Sleep membutuhkan agent terpasang di setiap PC client.
+            <div className="text-xs text-blue-700 bg-blue-50 border border-blue-200 rounded-xl px-3 py-2 mb-5">
+              Perintah dikirim secara realtime ke aplikasi LabKom Siswa yang sedang online.
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <button className="py-3 px-4 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-xl font-medium flex items-center justify-center space-x-2 transition-colors">
+              <button onClick={() => setConfirmSystemCommand({ command: 'shutdown', target: 'all', label: 'Shutdown' })} className="py-3 px-4 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 rounded-xl font-medium flex items-center justify-center space-x-2 transition-colors">
                 <Power className="w-4 h-4" /><span>Shutdown Semua</span>
               </button>
-              <button className="py-3 px-4 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl font-medium flex items-center justify-center space-x-2 transition-colors">
+              <button onClick={() => setConfirmSystemCommand({ command: 'sleep', target: 'all', label: 'Sleep' })} className="py-3 px-4 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl font-medium flex items-center justify-center space-x-2 transition-colors">
                 <Moon className="w-4 h-4" /><span>Sleep Semua</span>
               </button>
               <button
@@ -2255,10 +2472,328 @@ export default function AdminDashboard() {
     </div>
   );
 
+  const renderDesignPcPreview = (pc) => {
+    const screen = getScreenForPc(pc);
+    return (
+      <div className="labkom-pc-preview">
+        {screen?.image ? (
+          <img src={screen.image} alt={`Layar ${pc.id}`} />
+        ) : (
+          <div className="labkom-pc-empty">
+            {pc.status === 'offline' ? <WifiOff /> : <Monitor />}
+            <span>{pc.status === 'offline' ? 'Offline' : 'Layar belum tersedia'}</span>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const openRemoteForPc = (pc) => {
+    const screen = getScreenForPc(pc);
+    setFocusedScreen(screen?.pc_name || pc.actual_pc_name || pc.id);
+    setActiveTab('screens');
+  };
+
+  const renderDesignOverviewPanel = () => (
+    <aside className="labkom-overview">
+      <div className="labkom-panel-head">
+        <div><h2>Ringkasan Lab</h2><p>X RPL 1 · pemantauan langsung</p></div>
+        <span className="labkom-badge">{onlineCount} / {pcs.length || 0} online</span>
+      </div>
+      <div className="labkom-stat-grid">
+        {[
+          ['Aktif', activePcs.length, 'active'],
+          ['Menunggu', lockedPcs.length, 'locked'],
+          ['Bantuan', 0, 'help'],
+          ['Terkunci', lockedPcs.length, 'locked'],
+          ['Peringatan', 0, 'alert'],
+          ['Offline', offlineCount, 'offline'],
+        ].map(([label, value, status]) => (
+          <div className="labkom-stat" key={label}>
+            <strong>{value}</strong>
+            <span><i className={`labkom-status-dot is-${status}`} />{label}</span>
+          </div>
+        ))}
+      </div>
+      <section className="labkom-panel-section">
+        <header><span>Aktivitas terbaru</span><span>{activityFeed.length}</span></header>
+        {(activityFeed.length ? activityFeed : [{ icon: CheckCircle2, time: '--:--', title: 'Server siap', detail: 'Menunggu aktivitas siswa' }]).slice(0, 4).map((item, index) => {
+          const Icon = item.icon;
+          return (
+            <div className="labkom-feed-row" key={`${item.time}-${index}`}>
+              <div className="labkom-feed-icon"><Icon className="w-4 h-4" /></div>
+              <div className="labkom-feed-copy"><strong>{item.title}</strong><span>{item.detail} · {item.time}</span></div>
+            </div>
+          );
+        })}
+      </section>
+      <section className="labkom-panel-section">
+        <header><span>Status sistem</span><span>live</span></header>
+        <div className="labkom-feed-row">
+          <div className="labkom-feed-icon"><Server className="w-4 h-4" /></div>
+          <div className="labkom-feed-copy"><strong>{serverInfo?.status === 'online' || DEMO_MODE ? 'Server terhubung' : 'Memeriksa server'}</strong><span>{serverInfo?.ip || 'localhost'}:{serverInfo?.port || 3001}</span></div>
+        </div>
+      </section>
+    </aside>
+  );
+
+  const renderDesignSelectedPanel = (pc) => {
+    const screen = getScreenForPc(pc);
+    const clientDevice = clientMacs.find((entry) => (
+      entry.pc_name === (pc.actual_pc_name || pc.id) || entry.pc_name === pc.id
+    ));
+    const wakeMac = pc.mac || pc.binding_mac || clientDevice?.mac || null;
+    const mappingKey = pc.actual_pc_name || pc.id;
+    return (
+      <aside className="labkom-overview">
+        <div className="labkom-panel-head">
+          <div><h2>{getPcStudentName(pc)}</h2><p>{pc.id} · {pc.student?.kelas || 'Belum login'}</p></div>
+          <button className="labkom-icon-button !min-h-8 !px-2" onClick={() => setMonitorSelectedPc(null)} aria-label="Tutup detail"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="labkom-selected-preview">
+          <div className="frame">
+            {screen?.image ? <img src={screen.image} alt={`Layar ${pc.id}`} /> : <div className="labkom-remote-empty"><Monitor /><span>Layar belum tersedia</span></div>}
+          </div>
+        </div>
+        <div className="labkom-selected-meta">
+          <div><span>Status</span><strong>{pc.status}</strong></div>
+          <div><span>Alamat IP</span><strong>{pc.ip || '—'}</strong></div>
+          <div><span>Waktu login</span><strong>{pc.loginTime || '—'}</strong></div>
+          <div><span>Durasi</span><strong>{pc.duration || '—'}</strong></div>
+          <div><span>Kebijakan</span><strong>{policyStatusByPc[pc.actual_pc_name || pc.id] ? 'Diterapkan' : realtimeConnected ? 'Menunggu ack' : 'Offline'}</strong></div>
+        </div>
+        {(pc.is_unmapped || pc.binding_hostname || pc.binding_mac || (pc.status === 'offline' && wakeMac)) && (
+          <section className="labkom-panel-section !mt-0">
+            <header><span>Perangkat fisik</span><span>{pc.is_unmapped ? 'belum dipetakan' : 'terhubung'}</span></header>
+            {pc.is_unmapped ? (
+              <div className="space-y-2 p-3">
+                <select
+                  value={mappingSelections[mappingKey] || ''}
+                  onChange={(event) => setMappingSelections((prev) => ({ ...prev, [mappingKey]: event.target.value }))}
+                  className="w-full h-9 rounded-lg px-3 text-xs"
+                >
+                  <option value="">Pilih slot PC lab...</option>
+                  {labPcOptions.map((option) => <option key={option.id} value={option.id}>{option.id} - {option.label}</option>)}
+                </select>
+                <button onClick={() => handleAssignDeviceMapping(pc)} disabled={mappingBusy[mappingKey]} className="labkom-action labkom-action-primary w-full">
+                  {mappingBusy[mappingKey] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}<span>Petakan perangkat</span>
+                </button>
+              </div>
+            ) : (
+              <div className="p-3 text-[10px] text-[var(--lab-text-3)]">
+                <p>{pc.binding_hostname || pc.actual_pc_name || pc.id}</p>
+                {wakeMac && <p className="font-mono mt-1">{wakeMac}</p>}
+                {(pc.binding_hostname || pc.binding_mac) && (
+                  <button onClick={() => handleClearDeviceMapping(pc)} disabled={mappingBusy[pc.id]} className="labkom-action mt-2 w-full">
+                    {mappingBusy[pc.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}<span>Lepas mapping</span>
+                  </button>
+                )}
+              </div>
+            )}
+            {pc.status === 'offline' && wakeMac && (
+              <button onClick={() => handleWakeOnLan(wakeMac, pc.id)} disabled={wolBusy[pc.id]} style={{ width: 'calc(100% - 1.5rem)' }} className="labkom-action m-3 mt-0">
+                {wolBusy[pc.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}<span>Wake-on-LAN</span>
+              </button>
+            )}
+          </section>
+        )}
+        <div className="labkom-quick-grid">
+          <button onClick={() => openRemoteForPc(pc)}><Eye />Remote</button>
+          <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'lock', target: pc.actual_pc_name || pc.id, label: 'Kunci Windows' })}><Lock />Kunci</button>
+          <button disabled={pc.status === 'offline'} className={attentionTargets[pc.actual_pc_name || pc.id] ? 'is-active' : ''} onClick={() => toggleTargetAttention(pc)}><Moon />{attentionTargets[pc.actual_pc_name || pc.id] ? 'Lepas blank' : 'Blank'}</button>
+          <button onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle />Pesan</button>
+          <button onClick={() => setActiveTab('control')}><Globe />Buka web</button>
+          <button onClick={() => setActiveTab('files')}><Upload />Kirim file</button>
+          <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'sleep', target: pc.actual_pc_name || pc.id, label: 'Sleep' })}><Moon />Sleep</button>
+          <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'restart', target: pc.actual_pc_name || pc.id, label: 'Restart' })}><RefreshCw />Restart</button>
+          <button disabled={pc.status === 'offline'} className="is-danger" onClick={() => setConfirmSystemCommand({ command: 'shutdown', target: pc.actual_pc_name || pc.id, label: 'Shutdown' })}><Power />Shutdown</button>
+          <button onClick={() => downloadScreenSnapshot(pc)}><ImageIcon />Snapshot</button>
+          <button className="is-danger" onClick={() => handleForceLogout(pc)}><LogOut />Log off</button>
+        </div>
+      </aside>
+    );
+  };
+
+  const renderDesignMonitorView = () => {
+    const normalizedSearch = monitorSearch.trim().toLowerCase();
+    const filteredPcs = pcs.filter((pc) => {
+      const matchesFilter = monitorFilter === 'all' || pc.status === monitorFilter;
+      const haystack = `${pc.id} ${pc.actual_pc_name || ''} ${getPcStudentName(pc)} ${pc.student?.nis || ''}`.toLowerCase();
+      return matchesFilter && (!normalizedSearch || haystack.includes(normalizedSearch));
+    });
+    return (
+      <div className="labkom-monitor">
+        <div className="labkom-monitor-main">
+          <div className="labkom-filterbar">
+            <label className="labkom-search"><Search className="w-4 h-4" /><input value={monitorSearch} onChange={(event) => setMonitorSearch(event.target.value)} placeholder="Cari siswa atau PC..." /></label>
+            {[
+              ['all', `Semua ${pcs.length}`], ['active', `Aktif ${activePcs.length}`],
+              ['locked', `Menunggu ${lockedPcs.length}`], ['offline', `Offline ${offlineCount}`],
+            ].map(([id, label]) => <button key={id} className={`labkom-chip ${monitorFilter === id ? 'is-active' : ''}`} onClick={() => setMonitorFilter(id)}>{label}</button>)}
+            <div className="labkom-filter-actions">
+              <button className="labkom-icon-button !min-h-8 !px-2" onClick={() => fetchPcs()} title="Muat ulang"><RefreshCw className={`w-4 h-4 ${pcsLoading ? 'animate-spin' : ''}`} /></button>
+              <button className="labkom-icon-button !min-h-8 !px-2" title="Tampilan grid"><LayoutGrid className="w-4 h-4" /></button>
+            </div>
+          </div>
+          {pcsLoading ? (
+            <div className="h-80 grid place-items-center text-[var(--lab-yellow)]"><Loader2 className="w-8 h-8 animate-spin" /></div>
+          ) : filteredPcs.length === 0 ? (
+            <div className="h-80 grid place-items-center text-[var(--lab-text-3)] text-sm">Tidak ada PC yang cocok dengan filter.</div>
+          ) : (
+            <div className="labkom-pc-grid">
+              {filteredPcs.map((pc) => (
+                <button key={pc.id} onClick={() => setMonitorSelectedPc(pc)} className={`labkom-pc-card ${pc.status === 'offline' ? 'is-offline' : ''} ${monitorSelectedPc?.id === pc.id ? 'is-selected' : ''}`}>
+                  {renderDesignPcPreview(pc)}
+                  <div className="labkom-pc-meta"><div className="labkom-pc-title"><i className={`labkom-status-dot is-${pc.status}`} /><strong>{getPcStudentName(pc)}</strong></div><span className="labkom-pc-id">{pc.id}</span></div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        {monitorSelectedPc ? renderDesignSelectedPanel(monitorSelectedPc) : renderDesignOverviewPanel()}
+      </div>
+    );
+  };
+
+  const renderDesignRemoteWorkspace = () => {
+    const remoteScreen = screens.find((screen) => screen.pc_name === focusedScreen) || screens[0] || null;
+    const remotePc = pcs.find((pc) => [pc.id, pc.actual_pc_name].includes(remoteScreen?.pc_name))
+      || pcs.find((pc) => [pc.id, pc.actual_pc_name].includes(focusedScreen)) || activePcs[0] || null;
+    return (
+      <div className="labkom-remote">
+        <section className="labkom-remote-stage">
+          <div className="labkom-remote-toolbar">
+            <div className="labkom-avatar">{getPcStudentName(remotePc).split(' ').map((word) => word[0]).slice(0, 2).join('')}</div>
+            <div className="identity"><strong>{getPcStudentName(remotePc)}</strong><span>{remoteScreen?.pc_name || remotePc?.id || 'Tidak ada layar aktif'}</span></div>
+            <button className="labkom-chip is-active"><Eye className="inline w-3 h-3 mr-1" />Watch</button>
+            <span className="labkom-chip" title="Kontrol mouse dan keyboard belum tersedia"><Eye className="inline w-3 h-3 mr-1" />View only</span>
+            <span className="labkom-badge">{remoteScreen ? 'Live' : 'Menunggu'}</span>
+          </div>
+          <div className="labkom-remote-screen">{remoteScreen?.image ? <img src={remoteScreen.image} alt={`Remote ${remoteScreen.pc_name}`} /> : <div className="labkom-remote-empty"><Monitor /><span>Belum ada frame layar yang diterima.</span></div>}</div>
+          <div className="labkom-remote-controls">
+            <button className="labkom-action labkom-action-primary" disabled={!remotePc || !remoteScreen?.image} onClick={() => remotePc && downloadScreenSnapshot(remotePc)}><ImageIcon className="w-4 h-4" /><span>Snapshot</span></button>
+            <button className="labkom-action" disabled={!remotePc || remotePc.status === 'offline'} onClick={() => remotePc && setConfirmSystemCommand({ command: 'lock', target: remotePc.actual_pc_name || remotePc.id, label: 'Kunci Windows' })}><Lock className="w-4 h-4" /><span>Kunci Windows</span></button>
+            <button className={`labkom-action ${remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'is-active' : ''}`} disabled={!remotePc || remotePc.status === 'offline'} onClick={() => remotePc && toggleTargetAttention(remotePc)}><Moon className="w-4 h-4" /><span>{remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'Lepas blank' : 'Blank'}</span></button>
+            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle className="w-4 h-4" /><span>Pesan</span></button>
+            <button className="labkom-action" onClick={() => fetchScreens()}><RefreshCw className="w-4 h-4" /><span>Refresh</span></button>
+          </div>
+        </section>
+        <aside className="labkom-remote-side">
+          <div className="labkom-panel-head"><div><h2>Detail sesi</h2><p>{remoteScreen ? 'Terhubung' : 'Belum terhubung'}</p></div><span className="labkom-badge">{remotePc?.status || 'offline'}</span></div>
+          <div className="labkom-selected-meta !pt-4"><div><span>Aplikasi aktif</span><strong>—</strong></div><div><span>IP</span><strong>{remotePc?.ip || '—'}</strong></div><div><span>Login</span><strong>{remotePc?.loginTime || '—'}</strong></div><div><span>Durasi</span><strong>{remotePc?.duration || '—'}</strong></div></div>
+          <section className="labkom-panel-section">
+            <header><span>Aktivitas</span><span>live</span></header>
+            {(activityFeed.length ? activityFeed : [{ icon: MessageCircle, time: '--:--', title: 'Belum ada aktivitas', detail: 'Pesan dan status akan muncul di sini' }]).slice(0, 5).map((item, index) => {
+              const Icon = item.icon;
+              return <div className="labkom-feed-row" key={`${item.time}-${index}`}><div className="labkom-feed-icon"><Icon className="w-4 h-4" /></div><div className="labkom-feed-copy"><strong>{item.title}</strong><span>{item.detail} · {item.time}</span></div></div>;
+            })}
+          </section>
+        </aside>
+      </div>
+    );
+  };
+
+  const renderDesignRestrictWorkspace = () => {
+    const allowedSites = whitelist.length ? whitelist : (DEMO_MODE ? [
+      'classroom.google.com', 'id.wikipedia.org', 'kbbi.web.id', 'github.com', 'scratch.mit.edu',
+    ] : []);
+    const blockedSites = blacklist.length ? blacklist : (DEMO_MODE ? [
+      'facebook.com', 'youtube.com', 'tiktok.com', 'instagram.com', 'store.steampowered.com',
+    ] : []);
+    const columns = [
+      {
+        title: 'Website diizinkan', sites: allowedSites, tone: 'text-emerald-400',
+        remove: (site) => setWhitelist(allowedSites.filter((item) => item !== site)),
+        input: newWebsite, setInput: setNewWebsite,
+        add: () => {
+          const site = newWebsite.trim();
+          if (site && !allowedSites.includes(site)) setWhitelist([...allowedSites, site]);
+          setNewWebsite('');
+        },
+      },
+      {
+        title: 'Website diblokir', sites: blockedSites, tone: 'text-red-400',
+        remove: (site) => setBlacklist(blockedSites.filter((item) => item !== site)),
+        input: newBlockedWeb, setInput: setNewBlockedWeb,
+        add: () => {
+          const site = newBlockedWeb.trim();
+          if (site && !blockedSites.includes(site)) setBlacklist([...blockedSites, site]);
+          setNewBlockedWeb('');
+        },
+      },
+    ];
+    return (
+      <div className="labkom-legacy-surface p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div><h2 className="text-base font-bold text-[var(--lab-text)]">Kontrol Web & Aplikasi</h2><p className="text-[10px] text-[var(--lab-text-3)]">Diterapkan ke X RPL 1 · {pcs.length} siswa</p></div>
+          <label className="flex items-center gap-3 text-xs text-[var(--lab-text-2)]">Mode terbatas
+            <button onClick={() => setWebFilterEnabled(!webFilterEnabled)} className={`w-11 h-6 rounded-full p-1 transition-colors ${webFilterEnabled ? 'bg-[var(--lab-yellow)]' : 'bg-[var(--lab-panel-2)]'}`}>
+              <span className={`block w-4 h-4 rounded-full bg-white transition-transform ${webFilterEnabled ? 'translate-x-5' : ''}`} />
+            </button>
+          </label>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_310px] gap-3">
+          {columns.map((column) => (
+            <section key={column.title} className="border border-[var(--lab-line)] rounded-xl overflow-hidden bg-[var(--lab-panel)]">
+              <header className={`px-4 py-3 border-b border-[var(--lab-line)] text-xs font-bold ${column.tone}`}>{column.title}<span className="float-right font-mono">{column.sites.length}</span></header>
+              {column.sites.map((site) => (
+                <div key={site} className="flex items-center gap-3 px-4 py-3 border-b border-[var(--lab-line)]">
+                  <Globe className={`w-4 h-4 ${column.tone}`} />
+                  <span className="flex-1 text-xs text-[var(--lab-text)] truncate">{site}</span>
+                  <button onClick={() => column.remove(site)} className="text-[var(--lab-text-3)] hover:text-red-400" aria-label={`Hapus ${site}`}><X className="w-4 h-4" /></button>
+                </div>
+              ))}
+              {!column.sites.length && <p className="px-4 py-10 text-center text-xs text-[var(--lab-text-3)]">Daftar masih kosong.</p>}
+              <form onSubmit={(event) => { event.preventDefault(); column.add(); }} className="flex gap-2 p-3">
+                <input value={column.input} onChange={(event) => column.setInput(event.target.value)} placeholder="Tambahkan domain..." className="min-w-0 flex-1 h-9 rounded-lg px-3 text-xs" />
+                <button className="labkom-icon-button !min-h-9"><Plus className="w-4 h-4" /></button>
+              </form>
+            </section>
+          ))}
+          <aside className="space-y-3">
+            <section className="border border-[var(--lab-line)] rounded-xl overflow-hidden bg-[var(--lab-panel)]">
+              <header className="px-4 py-3 border-b border-[var(--lab-line)] text-xs font-bold">Pratinjau siswa</header>
+              <div className="m-3 aspect-video rounded-lg border border-[var(--lab-line)] bg-[#080e19] grid place-items-center text-center p-5">
+                <div><AlertTriangle className="w-8 h-8 text-red-400 mx-auto mb-2" /><p className="text-xs font-bold">Akses diblokir</p><p className="text-[9px] text-[var(--lab-text-3)] mt-1">Diblokir oleh kebijakan Lab Komputer SPH</p></div>
+              </div>
+            </section>
+            <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)]">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--lab-text-3)] mb-2">Mode kebijakan</p>
+              <div className="grid grid-cols-2 gap-2">
+                {[['blacklist', 'Blokir daftar'], ['whitelist', 'Hanya izinkan']].map(([mode, label]) => <button key={mode} onClick={() => setWebFilterMode(mode)} className={`labkom-chip ${webFilterMode === mode ? 'is-active' : ''}`}>{label}</button>)}
+              </div>
+            </section>
+            <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)] space-y-3">
+              <div className="flex items-center justify-between">
+                <div><p className="text-[10px] uppercase tracking-wider text-[var(--lab-text-3)]">Volume master</p><strong className="text-sm text-[var(--lab-text)]">{isGlobalMuted ? 'Mute' : `${globalVolume}%`}</strong></div>
+                <button onClick={() => setIsGlobalMuted(!isGlobalMuted)} className={`labkom-chip ${isGlobalMuted ? 'is-active' : ''}`}>{isGlobalMuted ? 'Aktifkan suara' : 'Mute'}</button>
+              </div>
+              <input type="range" min="0" max="100" value={globalVolume} onChange={(event) => setGlobalVolume(Number(event.target.value))} className="w-full accent-yellow-400" />
+            </section>
+            <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)] space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-[var(--lab-text-3)]">Wallpaper lab</p>
+              <input value={wallpaperUrl} onChange={(event) => setWallpaperUrl(event.target.value)} placeholder="https://.../wallpaper.jpg" className="w-full h-9 rounded-lg px-3 text-xs" />
+              <select value={wallpaperTarget} onChange={(event) => setWallpaperTarget(event.target.value)} className="w-full h-9 rounded-lg px-3 text-xs">
+                <option value="both">Login & desktop</option><option value="login">Layar login</option><option value="desktop">Desktop siswa</option>
+              </select>
+            </section>
+            <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)]">
+              <div className="flex items-center justify-between text-xs"><span className="text-[var(--lab-text-3)]">Koneksi kebijakan</span><strong className={realtimeConnected ? 'text-emerald-400' : 'text-red-400'}>{realtimeConnected ? 'Realtime aktif' : 'Terputus'}</strong></div>
+              <p className="text-[10px] text-[var(--lab-text-3)] mt-1">{Object.keys(policyStatusByPc).length} client sudah mengonfirmasi penerapan kebijakan.</p>
+            </section>
+            <button onClick={() => saveSettings()} disabled={ctrlSaving} className="labkom-action labkom-action-primary w-full !h-11">
+              {ctrlSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}<span>Terapkan kebijakan</span>
+            </button>
+          </aside>
+        </div>
+      </div>
+    );
+  };
+
   const renderBroadcastStudio = () => (
     <div className="h-full grid grid-cols-[minmax(0,1fr)_260px] gap-4 p-4 bg-[#eef3f9] overflow-y-auto">
       <div className="space-y-3">
-        <ScreenShareAdmin socket={realtimeSocketRef.current} />
+        <ScreenShareAdmin socket={realtimeSocket} />
       </div>
       <div className="space-y-3">
         <div className="bg-white border border-slate-200 rounded p-3">
@@ -2449,16 +2984,17 @@ export default function AdminDashboard() {
   );
 
   const renderWorkspaceContent = () => {
-    if (activeTab === 'monitoring') return renderLabMonitorView();
-    if (activeTab === 'screenshare') return renderBroadcastStudio();
-    if (activeTab === 'checks')   return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto">{renderChecks()}</div>;
-    if (activeTab === 'activities') return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto"><ActivityMonitor serverUrl={API} socket={realtimeSocketRef.current} /></div>;
-    if (activeTab === 'control')  return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto">{renderControl()}</div>;
-    if (activeTab === 'screens')  return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto">{renderScreens()}</div>;
-    if (activeTab === 'students') return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto">{renderStudents()}</div>;
-    if (activeTab === 'history')  return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto">{renderHistory()}</div>;
-    if (activeTab === 'server')   return <div className="p-4 bg-[#eef3f9] h-full overflow-y-auto">{renderServer()}</div>;
-    return renderLabMonitorView();
+    if (activeTab === 'monitoring') return renderDesignMonitorView();
+    if (activeTab === 'screens') return renderDesignRemoteWorkspace();
+    if (activeTab === 'control') return renderDesignRestrictWorkspace();
+    if (activeTab === 'screenshare') return <div className="labkom-legacy-surface">{renderBroadcastStudio()}</div>;
+    if (activeTab === 'files') return <FilesWorkspace pcs={pcs} socket={realtimeSocket} demo={DEMO_MODE} onToast={showToast} />;
+    if (activeTab === 'checks') return <RegisterWorkspace pcs={pcs} checks={checks} loading={chkLoading} onRefresh={() => fetchChecks(1)} />;
+    if (activeTab === 'activities') return <div className="labkom-legacy-surface p-4"><ActivityMonitor serverUrl={API} socket={realtimeSocket} /></div>;
+    if (activeTab === 'students') return <div className="labkom-legacy-surface p-4">{renderStudents()}</div>;
+    if (activeTab === 'history') return <ReportsWorkspace pcs={pcs} checks={checks} history={history} topApps={reportData.topApps} topSites={reportData.topSites} timeline={reportData.timeline} demo={DEMO_MODE} onRefresh={fetchReportData} onToast={showToast} />;
+    if (activeTab === 'server') return <div className="labkom-legacy-surface p-4">{renderServer()}</div>;
+    return renderDesignMonitorView();
   };
 
   if (authLoading) {
@@ -2509,74 +3045,46 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="h-screen bg-[#dfe6ef] font-sans text-slate-800 overflow-hidden">
-      <div className="h-full flex flex-col bg-white border border-slate-300 shadow-xl">
-        <div className="h-7 bg-[#f8fafc] border-b border-slate-200 flex items-center px-3 text-[11px]">
-          <div className="flex gap-1.5 mr-4">
-            <span className="w-3 h-3 rounded-full bg-red-400" />
-            <span className="w-3 h-3 rounded-full bg-amber-400" />
-            <span className="w-3 h-3 rounded-full bg-emerald-400" />
+    <div className="labkom-admin">
+      <div className="labkom-shell">
+        <header className="labkom-header">
+          <div className="labkom-brand">
+            <div className="labkom-logo">L</div>
+            <div><strong>Lab Komputer SPH</strong><span>Monitoring & classroom control</span></div>
           </div>
-          <div className="flex-1 text-center font-semibold text-slate-600">Labkom - Lab Komputer 1 - {activeClassName}</div>
-          <div className="text-slate-500">Sesi: {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} - Admin Lab</div>
-        </div>
-
-        <div className="h-7 bg-white border-b border-slate-200 flex items-center justify-between px-3 text-[11px]">
-          <div className="flex items-center gap-4">
-            {['File', 'Edit', 'View', 'Siswa', 'Kelas', 'Tools', 'Bantuan'].map((item) => (
-              <button key={item} className={`px-2 py-1 rounded ${item === 'View' ? 'bg-blue-100 text-blue-700' : 'hover:bg-slate-100 text-slate-700'}`}>{item}</button>
-            ))}
+          <div className="labkom-session"><strong>Class X RPL 1 — Networking</strong><span>Sesi 09:00–10:30 · {pcs.length || 30} kursi</span></div>
+          <div className="labkom-live">LIVE · Monitoring</div>
+          <div className="labkom-header-actions">
+            <button className="labkom-action" onClick={() => setActiveTab('screenshare')}><BookOpen className="w-4 h-4" /><span>Broadcast</span></button>
+            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle className="w-4 h-4" /><span>Message all</span></button>
+            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-attention'))}><Lock className="w-4 h-4" /><span>Lock all</span></button>
+            <button className="labkom-action" onClick={() => setShowPowerMenu(true)}><Power className="w-4 h-4" /><span>Power</span></button>
+            <span className="labkom-clock">{currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+            <button className="labkom-avatar" onClick={handleAdminLogout} title="Keluar admin">A</button>
           </div>
-          <button onClick={handleAdminLogout} className="flex items-center gap-1 text-slate-500 hover:text-red-600">
-            <LogOut className="w-3.5 h-3.5" /> Keluar
-          </button>
-        </div>
-
-        <div className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-3">
-          <div className="flex items-center gap-1">
-            {[
-              { id: 'monitoring', label: 'Awasi', icon: Eye },
-              { id: 'screens', label: 'Layar', icon: Monitor },
-              { id: 'screenshare', label: 'Tayangkan', icon: BookOpen },
-              { id: 'students', label: 'Siswa', icon: Users },
-              { id: 'history', label: 'Riwayat', icon: History },
-              { id: 'checks', label: 'Pengecekan', icon: ClipboardList },
-              { id: 'activities', label: 'Aktivitas', icon: Activity },
-              { id: 'control', label: 'Pengaturan', icon: Settings },
-              { id: 'server', label: 'Server', icon: Server },
-            ].map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                onClick={() => setActiveTab(id)}
-                className={`w-16 h-11 rounded flex flex-col items-center justify-center gap-0.5 text-[10px] ${activeTab === id ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-2">
-            <ServerInfoBanner info={serverInfo} />
-            <button onClick={handleCheckUpdate} className="h-8 px-3 rounded border border-slate-200 text-xs text-slate-600 hover:bg-slate-50 flex items-center gap-1.5">
-              <DownloadCloud className="w-3.5 h-3.5" /> Update
-            </button>
-          </div>
-        </div>
+        </header>
 
         <UpdateBanner status={updateStatus} onCheck={handleCheckUpdate} onDownload={handleDownloadUpdate} onInstall={handleInstallUpdate} />
 
-        <div className="flex flex-1 min-h-0">
-          {renderLabSidebar()}
-          <main className="flex-1 min-w-0 min-h-0">
-            {renderWorkspaceContent()}
-          </main>
-        </div>
-
-        <div className="h-5 bg-blue-700 text-white text-[10px] flex items-center justify-between px-3">
-          <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-emerald-300" /> Server Aktif</span>
-          <span>{onlineCount} online - {offlineCount} offline - {activePcs.length} aktif</span>
-          <span>Kelas {activeClassName}</span>
-          <span>Diag/Win - {currentTime.toLocaleTimeString('id-ID')}</span>
+        <div className="labkom-body">
+          <nav className="labkom-rail" aria-label="Navigasi admin">
+            {[
+              { id: 'monitoring', label: 'Monitor', icon: LayoutGrid },
+              { id: 'screens', label: 'Remote', icon: Eye },
+              { id: 'control', label: 'Restrict', icon: ShieldCheck },
+              { id: 'files', label: 'Files', icon: FolderOpen },
+              { id: 'checks', label: 'Register', icon: ClipboardList },
+              { id: 'history', label: 'Reports', icon: History },
+              { id: 'students', label: 'Students', icon: Users },
+              { id: 'activities', label: 'Activity', icon: Activity },
+              { id: 'server', label: 'Server', icon: Server },
+            ].map(({ id, label, icon: Icon }) => (
+              <button key={id} onClick={() => setActiveTab(id)} className={`labkom-rail-button ${activeTab === id ? 'is-active' : ''}`} title={label}>
+                <Icon /><span>{label}</span>
+              </button>
+            ))}
+          </nav>
+          <main className="labkom-workspace">{renderWorkspaceContent()}</main>
         </div>
       </div>
 
@@ -2682,13 +3190,69 @@ export default function AdminDashboard() {
           {activeTab === 'students'  && renderStudents()}
           {activeTab === 'history'   && renderHistory()}
           {activeTab === 'checks'    && renderChecks()}
-          {activeTab === 'activities'  && <ActivityMonitor serverUrl={API} socket={realtimeSocketRef.current} />}
-          {activeTab === 'screenshare' && <ScreenShareAdmin socket={realtimeSocketRef.current} />}
+          {activeTab === 'activities'  && <ActivityMonitor serverUrl={API} socket={realtimeSocket} />}
+          {activeTab === 'screenshare' && <ScreenShareAdmin socket={realtimeSocket} />}
           {activeTab === 'server'      && renderServer()}
         </div>
       </main>
 
+      {showPowerMenu && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-700 bg-[#0f172a] text-white shadow-2xl p-6">
+            <div className="flex items-start justify-between gap-4 mb-5">
+              <div><h3 className="text-lg font-bold">Kontrol daya client</h3><p className="text-xs text-slate-400 mt-1">Perintah berlaku untuk seluruh PC siswa yang terdaftar.</p></div>
+              <button onClick={() => setShowPowerMenu(false)} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800" aria-label="Tutup kontrol daya"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3">
+              <button onClick={() => { setShowPowerMenu(false); setConfirmKillAll('temp'); }} className="w-full p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left hover:bg-amber-500/20">
+                <strong className="block text-sm text-amber-300">Hentikan sementara</strong><span className="text-xs text-slate-400">Client ditutup dan watchdog membukanya kembali dalam paling lama dua menit.</span>
+              </button>
+              <button onClick={() => { setShowPowerMenu(false); setConfirmKillAll('perm'); }} className="w-full p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-left hover:bg-red-500/20">
+                <strong className="block text-sm text-red-300">Hentikan permanen</strong><span className="text-xs text-slate-400">Client ditutup sampai perintah aktifkan dikirim oleh Admin.</span>
+              </button>
+              <button onClick={() => { setShowPowerMenu(false); handleEnableAll(); }} disabled={remoteBusy} className="w-full p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-left hover:bg-emerald-500/20 disabled:opacity-50">
+                <strong className="block text-sm text-emerald-300">Aktifkan semua client</strong><span className="text-xs text-slate-400">Mengaktifkan kembali client yang sebelumnya dihentikan permanen.</span>
+              </button>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'lock', target: 'all', label: 'Kunci Windows' }); }} className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left hover:bg-amber-500/20"><strong className="text-sm text-amber-300">Kunci Windows</strong><span className="block text-[10px] text-slate-400 mt-1">Semua PC</span></button>
+                <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'sleep', target: 'all', label: 'Sleep' }); }} className="p-3 rounded-xl border border-indigo-500/30 bg-indigo-500/10 text-left hover:bg-indigo-500/20"><strong className="text-sm text-indigo-300">Sleep</strong><span className="block text-[10px] text-slate-400 mt-1">Semua PC</span></button>
+                <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'restart', target: 'all', label: 'Restart' }); }} className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-left hover:bg-blue-500/20"><strong className="text-sm text-blue-300">Restart</strong><span className="block text-[10px] text-slate-400 mt-1">15 detik</span></button>
+                <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'shutdown', target: 'all', label: 'Shutdown' }); }} className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-left hover:bg-red-500/20"><strong className="text-sm text-red-300">Shutdown</strong><span className="block text-[10px] text-slate-400 mt-1">15 detik</span></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmKillAll && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[75] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-[#0f172a] text-white shadow-2xl p-6">
+            <div className="flex items-center justify-center w-12 h-12 bg-red-500/15 rounded-full mx-auto mb-4"><PowerOff className="w-6 h-6 text-red-400" /></div>
+            <h3 className="text-lg font-bold text-center mb-2">{confirmKillAll === 'perm' ? 'Hentikan permanen?' : 'Hentikan sementara?'}</h3>
+            <p className="text-sm text-slate-400 text-center mb-5">{confirmKillAll === 'perm' ? 'Semua client ditutup sampai Admin mengaktifkannya kembali.' : 'Semua client ditutup dan watchdog akan mencoba membukanya kembali.'}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmKillAll(null)} className="flex-1 py-2.5 border border-slate-600 text-slate-300 hover:bg-slate-800 rounded-xl font-medium">Batal</button>
+              <button onClick={() => handleKillAll(confirmKillAll === 'perm')} disabled={remoteBusy} className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-xl font-medium">Ya, hentikan</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ─── MODAL: Kontrol Individual PC ────────────────────────────────── */}
+      {confirmSystemCommand && (
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[76] flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-[#0f172a] text-white shadow-2xl p-6">
+            <div className="flex items-center justify-center w-12 h-12 bg-amber-500/15 rounded-full mx-auto mb-4"><Power className="w-6 h-6 text-amber-300" /></div>
+            <h3 className="text-lg font-bold text-center mb-2">Konfirmasi {confirmSystemCommand.label}</h3>
+            <p className="text-sm text-slate-400 text-center mb-5">Perintah akan dikirim ke {confirmSystemCommand.target === 'all' ? 'semua PC siswa yang online' : confirmSystemCommand.target}. {['restart', 'shutdown'].includes(confirmSystemCommand.command) ? 'Windows memberi waktu 15 detik sebelum menjalankannya.' : ''}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmSystemCommand(null)} disabled={systemCommandBusy} className="flex-1 py-2.5 border border-slate-600 text-slate-300 hover:bg-slate-800 disabled:opacity-50 rounded-xl font-medium">Batal</button>
+              <button onClick={handleSystemCommand} disabled={systemCommandBusy} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 rounded-xl font-bold">{systemCommandBusy ? 'Mengirim…' : 'Ya, kirim'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {controlModalPc && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-500">
@@ -2727,12 +3291,12 @@ export default function AdminDashboard() {
               {/* Daya per PC */}
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Manajemen Daya</p>
-                <p className="text-xs text-amber-600 mb-3">Membutuhkan agent di PC client.</p>
+                <p className="text-xs text-slate-500 mb-3">Perintah realtime untuk aplikasi LabKom Siswa yang online.</p>
                 <div className="flex space-x-3">
-                  <button disabled={controlModalPc.status === 'offline'} className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-colors flex items-center justify-center space-x-2">
+                  <button onClick={() => setConfirmSystemCommand({ command: 'shutdown', target: controlModalPc.actual_pc_name || controlModalPc.id, label: 'Shutdown' })} disabled={controlModalPc.status === 'offline'} className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-colors flex items-center justify-center space-x-2">
                     <Power className="w-4 h-4" /><span>Shutdown</span>
                   </button>
-                  <button disabled={controlModalPc.status === 'offline'} className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-colors flex items-center justify-center space-x-2">
+                  <button onClick={() => setConfirmSystemCommand({ command: 'sleep', target: controlModalPc.actual_pc_name || controlModalPc.id, label: 'Sleep' })} disabled={controlModalPc.status === 'offline'} className="flex-1 py-2.5 bg-white border border-slate-300 text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl text-sm font-medium transition-colors flex items-center justify-center space-x-2">
                     <Moon className="w-4 h-4" /><span>Sleep</span>
                   </button>
                 </div>
@@ -2821,10 +3385,10 @@ export default function AdminDashboard() {
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
 
       {/* ─── Chat Panel (selalu mounted agar pesan tidak hilang saat ganti tab) ── */}
-      <ChatPanel socket={realtimeSocketRef.current} />
+      <ChatPanel socket={realtimeSocket} onlineCount={onlineCount} />
 
       {/* ─── Attention Mode (kunci layar semua siswa) ── */}
-      <AttentionModeButton socket={realtimeSocketRef.current} />
+      <AttentionModeButton socket={realtimeSocket} />
     </div>
   );
 }

@@ -1,8 +1,10 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification } = require('electron');
 const os              = require('os');
 const path            = require('path');
 const fs              = require('fs');
 const http            = require('http');
+const https           = require('https');
+const net             = require('net');
 const dgram           = require('dgram');
 const crypto          = require('crypto');
 const { execSync, spawn } = require('child_process');
@@ -60,23 +62,128 @@ const allowDevTools = process.env.OPEN_ELECTRON_DEVTOOLS === '1';
 let allowAppQuit = false;
 let realtimeSocket = null;
 let presenceHeartbeatTimer = null;
+let latestControlPolicy = null;
+let policyProxyServer = null;
+let policyProxyPort = null;
+const recentlyReportedBlockedHosts = new Map();
 
 // ── Auto-Updater (silent background update) ──────────────────────────────────
 // Client: download otomatis di background, install saat app keluar
-autoUpdater.logger         = log;
+autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
-autoUpdater.autoDownload   = true;   // Langsung download kalau ada update
-autoUpdater.autoInstallOnAppQuit = true;  // Install otomatis saat app ditutup/restart
+autoUpdater.channel = 'client';
+autoUpdater.allowPrerelease = false;
+autoUpdater.allowDowngrade = false;
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
 
-autoUpdater.on('update-downloaded', () => {
-  log.info('[CLIENT UPDATE] Update didownload, akan diinstall saat app ditutup.');
-  // Beritahu renderer agar tampil notifikasi kecil (opsional)
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('update-downloaded');
+const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const DEFAULT_CLIENT_SETTINGS = Object.freeze({
+  autoUpdate: true,
+  openAtLogin: true,
+  notifyUpdates: true,
+});
+let clientSettings = { ...DEFAULT_CLIENT_SETTINGS };
+let updateCheckTimer = null;
+let latestUpdateStatus = { state: 'idle', currentVersion: app.getVersion() };
+
+function getClientSettingsPath() {
+  return path.join(app.getPath('userData'), 'client.settings.json');
+}
+
+function sanitizeClientSettings(value = {}) {
+  return {
+    autoUpdate: value.autoUpdate !== false,
+    openAtLogin: value.openAtLogin !== false,
+    notifyUpdates: value.notifyUpdates !== false,
+  };
+}
+
+function loadClientSettings() {
+  try {
+    const stored = JSON.parse(fs.readFileSync(getClientSettingsPath(), 'utf-8'));
+    return sanitizeClientSettings({ ...DEFAULT_CLIENT_SETTINGS, ...stored });
+  } catch {
+    return { ...DEFAULT_CLIENT_SETTINGS };
   }
+}
+
+function saveClientSettings(settings) {
+  const safeSettings = sanitizeClientSettings(settings);
+  fs.writeFileSync(getClientSettingsPath(), JSON.stringify(safeSettings, null, 2), 'utf-8');
+  clientSettings = safeSettings;
+  return safeSettings;
+}
+
+function applyClientSettings(settings = clientSettings) {
+  clientSettings = sanitizeClientSettings(settings);
+  autoUpdater.autoDownload = clientSettings.autoUpdate;
+  if (!isDev) {
+    app.setLoginItemSettings({
+      openAtLogin: clientSettings.openAtLogin,
+      openAsHidden: false,
+      name: 'LabKom Siswa',
+    });
+  }
+}
+
+function sendClientUpdateStatus(data) {
+  latestUpdateStatus = {
+    ...latestUpdateStatus,
+    ...data,
+    currentVersion: app.getVersion(),
+  };
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('client-update-status', latestUpdateStatus);
+  }
+}
+
+function showUpdateNotification(title, body) {
+  if (!clientSettings.notifyUpdates || !app.isReady() || !Notification.isSupported()) return;
+  new Notification({ title, body, silent: false }).show();
+}
+
+function scheduleUpdateChecks() {
+  if (updateCheckTimer) clearInterval(updateCheckTimer);
+  updateCheckTimer = null;
+  if (isDev || !clientSettings.autoUpdate) return;
+  updateCheckTimer = setInterval(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      log.warn('[CLIENT UPDATE] Pemeriksaan berkala gagal:', error.message);
+    });
+  }, UPDATE_CHECK_INTERVAL_MS);
+}
+
+autoUpdater.on('checking-for-update', () => {
+  log.info('[CLIENT UPDATE] Memeriksa pembaruan...');
+  sendClientUpdateStatus({ state: 'checking', message: null });
+});
+autoUpdater.on('update-available', (info) => {
+  log.info('[CLIENT UPDATE] Pembaruan tersedia:', info.version);
+  sendClientUpdateStatus({ state: 'available', version: info.version, releaseNotes: info.releaseNotes });
+  showUpdateNotification('Pembaruan LabKom Siswa tersedia', `Versi ${info.version} sedang disiapkan.`);
+});
+autoUpdater.on('update-not-available', (info) => {
+  log.info('[CLIENT UPDATE] Sudah versi terbaru:', info.version);
+  sendClientUpdateStatus({ state: 'latest', version: info.version, percent: null, message: null });
+});
+autoUpdater.on('download-progress', (progress) => {
+  sendClientUpdateStatus({
+    state: 'downloading',
+    percent: Math.round(progress.percent),
+    speed: Math.round(progress.bytesPerSecond / 1024),
+    total: Math.round(progress.total / 1024 / 1024),
+  });
+});
+autoUpdater.on('update-downloaded', (info) => {
+  log.info('[CLIENT UPDATE] Download selesai, siap dipasang:', info.version);
+  sendClientUpdateStatus({ state: 'downloaded', version: info.version, percent: 100 });
+  showUpdateNotification('Pembaruan siap dipasang', `LabKom Siswa ${info.version} akan dipasang saat aplikasi ditutup.`);
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-downloaded');
 });
 autoUpdater.on('error', (err) => {
-  log.warn('[CLIENT UPDATE] Error (diabaikan):', err.message);
+  log.warn('[CLIENT UPDATE] Error:', err.message);
+  sendClientUpdateStatus({ state: 'error', message: err.message });
 });
 
 process.on('uncaughtException', (err) => {
@@ -505,7 +612,10 @@ function requestControlledQuit(reason) {
   stopKeyboardHook();
   showTaskbar(); // Selalu pulihkan taskbar saat quit
   globalShortcut.unregisterAll();
-  app.quit();
+  Promise.race([
+    restoreSystemProxy().catch(() => false),
+    new Promise((resolve) => setTimeout(resolve, 2500)),
+  ]).finally(() => app.quit());
 }
 
 function startAggressiveFocusLoop() {
@@ -772,6 +882,58 @@ function createWindow() {
 
 // ── IPC: Kirim hostname PC ke renderer ───────────────────────────
 ipcMain.handle('get-pc-name', () => os.hostname());
+ipcMain.handle('get-control-policy', () => latestControlPolicy);
+
+function sanitizeReceivedFileName(value) {
+  const base = path.basename(String(value || '').trim());
+  const safe = base
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
+    .replace(/\s+/g, ' ')
+    .slice(0, 120);
+  return safe || 'file-kelas';
+}
+
+ipcMain.handle('save-received-file', async (_event, payload = {}) => {
+  try {
+    const match = String(payload.data || '').match(/^data:[^;,]{1,120};base64,([A-Za-z0-9+/=]+)$/);
+    if (!match) return { success: false, message: 'Format file tidak valid.' };
+
+    const bytes = Buffer.from(match[1], 'base64');
+    if (!bytes.length || bytes.length > 1024 * 1024) {
+      return { success: false, message: 'File kosong atau melebihi 1 MB.' };
+    }
+
+    const destinationDir = path.join(app.getPath('downloads'), 'LabKom');
+    fs.mkdirSync(destinationDir, { recursive: true });
+
+    const fileName = sanitizeReceivedFileName(payload.name);
+    const parsed = path.parse(fileName);
+    let destination = path.join(destinationDir, fileName);
+    let suffix = 1;
+    while (fs.existsSync(destination)) {
+      destination = path.join(destinationDir, `${parsed.name} (${suffix})${parsed.ext}`);
+      suffix += 1;
+    }
+
+    fs.writeFileSync(destination, bytes, { flag: 'wx' });
+    return { success: true, file_name: path.basename(destination), path: destination, size: bytes.length };
+  } catch (error) {
+    log.warn('[FILE] Gagal menyimpan file kelas:', error.message);
+    return { success: false, message: 'File tidak dapat disimpan.' };
+  }
+});
+
+ipcMain.handle('show-received-file', async (_event, candidatePath) => {
+  try {
+    const allowedRoot = path.resolve(app.getPath('downloads'), 'LabKom');
+    const resolved = path.resolve(String(candidatePath || ''));
+    if (!resolved.startsWith(allowedRoot + path.sep) || !fs.existsSync(resolved)) return false;
+    shell.showItemInFolder(resolved);
+    return true;
+  } catch {
+    return false;
+  }
+});
 
 // ── IPC: Token device untuk socket renderer ────────────────────────────────
 ipcMain.handle('get-client-token', async () => {
@@ -811,6 +973,87 @@ ipcMain.on('save-server-url', (_event, url) => {
   }
 });
 
+ipcMain.handle('get-client-settings', () => {
+  const cfg = loadServerConfig();
+  return {
+    ...clientSettings,
+    serverUrl: cfg.serverUrl || '',
+    appVersion: app.getVersion(),
+    updateStatus: latestUpdateStatus,
+    isPackaged: app.isPackaged,
+  };
+});
+
+ipcMain.handle('save-client-settings', async (_event, payload = {}) => {
+  const nextServerUrl = String(payload.serverUrl || '').trim().replace(/\/$/, '');
+  if (nextServerUrl && !isAllowedLabServerUrl(nextServerUrl)) {
+    return { success: false, message: 'Alamat server harus menggunakan HTTP dan IP jaringan lokal.' };
+  }
+
+  const previousConfig = loadServerConfig();
+  if (nextServerUrl && nextServerUrl !== previousConfig.serverUrl) {
+    saveServerConfig({ ...previousConfig, serverUrl: nextServerUrl });
+    setStoredClientToken(null);
+    connectRealtime(nextServerUrl);
+    startPresenceHeartbeat();
+  }
+
+  try {
+    const saved = saveClientSettings(payload);
+    applyClientSettings(saved);
+    scheduleUpdateChecks();
+    if (!isDev && saved.autoUpdate) {
+      setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 1000);
+    }
+    return {
+      success: true,
+      settings: {
+        ...saved,
+        serverUrl: nextServerUrl || previousConfig.serverUrl || '',
+        appVersion: app.getVersion(),
+        updateStatus: latestUpdateStatus,
+        isPackaged: app.isPackaged,
+      },
+    };
+  } catch (error) {
+    log.warn('[SETTINGS] Gagal menyimpan pengaturan client:', error.message);
+    return { success: false, message: 'Pengaturan tidak dapat disimpan.' };
+  }
+});
+
+ipcMain.handle('check-client-update', async () => {
+  if (isDev) {
+    const status = { state: 'dev', message: 'Pemeriksaan update hanya aktif pada aplikasi yang sudah diinstal.' };
+    sendClientUpdateStatus(status);
+    return { success: false, ...status };
+  }
+  try {
+    await autoUpdater.checkForUpdates();
+    return { success: true };
+  } catch (error) {
+    sendClientUpdateStatus({ state: 'error', message: error.message });
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.handle('download-client-update', async () => {
+  if (isDev) return { success: false, message: 'Download update hanya aktif pada aplikasi terinstal.' };
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    sendClientUpdateStatus({ state: 'error', message: error.message });
+    return { success: false, message: error.message };
+  }
+});
+
+ipcMain.on('install-client-update', () => {
+  if (!isDev && latestUpdateStatus.state === 'downloaded') {
+    allowAppQuit = true;
+    autoUpdater.quitAndInstall(false, true);
+  }
+});
+
 function getPresencePayload() {
   const { mac, ip } = getFirstMac();
   return {
@@ -819,6 +1062,418 @@ function getPresencePayload() {
     ip: ip || null,
     student_name: screenShareState.studentName || null,
   };
+}
+
+const PROXY_REGISTRY_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
+const executedCommandIds = new Set();
+
+function normalizeClientPolicy(input = {}) {
+  const toBool = (value, fallback = false) => {
+    if (typeof value === 'boolean') return value;
+    if (value === 1 || value === '1' || String(value).toLowerCase() === 'true') return true;
+    if (value === 0 || value === '0' || String(value).toLowerCase() === 'false') return false;
+    return fallback;
+  };
+  const domains = (value) => {
+    let list = value;
+    if (!Array.isArray(list)) {
+      try { list = JSON.parse(String(value || '[]')); }
+      catch { list = String(value || '').split(/[\n,]/); }
+    }
+    return [...new Set((Array.isArray(list) ? list : []).map((entry) => {
+      let candidate = String(entry || '').trim().toLowerCase().replace(/^\*\./, '');
+      if (!candidate) return null;
+      try {
+        candidate = new URL(candidate.includes('://') ? candidate : `https://${candidate}`).hostname.toLowerCase();
+      } catch { return null; }
+      return candidate;
+    }).filter(Boolean))].slice(0, 100);
+  };
+
+  const volume = Number(input.master_volume);
+  return {
+    master_volume: Number.isFinite(volume) ? Math.max(0, Math.min(100, Math.round(volume))) : 75,
+    master_muted: toBool(input.master_muted),
+    web_filter_enabled: toBool(input.web_filter_enabled),
+    web_filter_mode: input.web_filter_mode === 'whitelist' ? 'whitelist' : 'blacklist',
+    whitelist: domains(input.whitelist),
+    blacklist: domains(input.blacklist),
+    wallpaper_url: /^https?:\/\//i.test(String(input.wallpaper_url || '').trim()) ? String(input.wallpaper_url).trim() : '',
+    wallpaper_target: ['login', 'desktop', 'both'].includes(input.wallpaper_target) ? input.wallpaper_target : 'both',
+  };
+}
+
+function runHiddenProcess(file, args, { capture = false } = {}) {
+  return new Promise((resolve) => {
+    const child = spawn(file, args, {
+      windowsHide: true,
+      stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'ignore',
+    });
+    let stdout = '';
+    let stderr = '';
+    if (capture) {
+      child.stdout?.on('data', (data) => { stdout += data.toString(); });
+      child.stderr?.on('data', (data) => { stderr += data.toString(); });
+    }
+    child.on('error', (error) => resolve({ success: false, stdout, stderr: error.message }));
+    child.on('exit', (code) => resolve({ success: code === 0, code, stdout, stderr }));
+  });
+}
+
+function proxyBackupPath() {
+  return path.join(app.getPath('userData'), 'proxy-backup.json');
+}
+
+async function queryRegistryValue(name) {
+  const result = await runHiddenProcess('reg.exe', ['query', PROXY_REGISTRY_KEY, '/v', name], { capture: true });
+  if (!result.success) return null;
+  const line = result.stdout.split(/\r?\n/).find((entry) => entry.trim().startsWith(name));
+  if (!line) return null;
+  const parts = line.trim().split(/\s{2,}/);
+  if (parts.length < 3) return null;
+  return { type: parts[1], value: parts.slice(2).join('  ') };
+}
+
+async function backupSystemProxy() {
+  const destination = proxyBackupPath();
+  if (fs.existsSync(destination)) return;
+  const backup = {
+    ProxyEnable: await queryRegistryValue('ProxyEnable'),
+    ProxyServer: await queryRegistryValue('ProxyServer'),
+    ProxyOverride: await queryRegistryValue('ProxyOverride'),
+  };
+  fs.writeFileSync(destination, JSON.stringify(backup, null, 2), 'utf-8');
+}
+
+async function setRegistryValue(name, type, value) {
+  return runHiddenProcess('reg.exe', ['add', PROXY_REGISTRY_KEY, '/v', name, '/t', type, '/d', String(value), '/f']);
+}
+
+async function applySystemProxy(port) {
+  if (process.platform !== 'win32') return false;
+  await backupSystemProxy();
+  const proxy = `http=127.0.0.1:${port};https=127.0.0.1:${port}`;
+  const bypass = '<local>;localhost;127.*;10.*;192.168.*;172.*';
+  const results = await Promise.all([
+    setRegistryValue('ProxyEnable', 'REG_DWORD', '1'),
+    setRegistryValue('ProxyServer', 'REG_SZ', proxy),
+    setRegistryValue('ProxyOverride', 'REG_SZ', bypass),
+  ]);
+  return results.every((item) => item.success);
+}
+
+async function restoreSystemProxy() {
+  if (process.platform !== 'win32') return true;
+  const source = proxyBackupPath();
+  if (!fs.existsSync(source)) {
+    if (policyProxyServer) {
+      await new Promise((resolve) => policyProxyServer.close(() => resolve()));
+      policyProxyServer = null;
+      policyProxyPort = null;
+    }
+    return true;
+  }
+
+  let backup;
+  try { backup = JSON.parse(fs.readFileSync(source, 'utf-8')); }
+  catch { return false; }
+
+  const results = [];
+  for (const name of ['ProxyEnable', 'ProxyServer', 'ProxyOverride']) {
+    const entry = backup[name];
+    if (entry?.type && entry.value !== undefined) {
+      results.push(await setRegistryValue(name, entry.type, entry.value));
+    } else {
+      results.push(await runHiddenProcess('reg.exe', ['delete', PROXY_REGISTRY_KEY, '/v', name, '/f']));
+    }
+  }
+  try { fs.unlinkSync(source); } catch {}
+  if (policyProxyServer) {
+    await new Promise((resolve) => policyProxyServer.close(() => resolve()));
+    policyProxyServer = null;
+    policyProxyPort = null;
+  }
+  return results.every((item) => item.success || item.code === 1);
+}
+
+function isPrivateOrLocalHost(hostname) {
+  const host = String(hostname || '').replace(/^\[|\]$/g, '').toLowerCase();
+  if (host === 'localhost' || host === '::1' || host.startsWith('127.')) return true;
+  if (host.startsWith('10.') || host.startsWith('192.168.')) return true;
+  const match172 = host.match(/^172\.(\d{1,3})\./);
+  return Boolean(match172 && Number(match172[1]) >= 16 && Number(match172[1]) <= 31);
+}
+
+function domainMatches(hostname, rule) {
+  const host = String(hostname || '').toLowerCase().replace(/\.$/, '');
+  const domain = String(rule || '').toLowerCase().replace(/^\*\./, '').replace(/\.$/, '');
+  return Boolean(domain && (host === domain || host.endsWith(`.${domain}`)));
+}
+
+function shouldBlockHost(hostname) {
+  if (isPrivateOrLocalHost(hostname)) return false;
+  const policy = latestControlPolicy || normalizeClientPolicy();
+  if (!policy.web_filter_enabled) return false;
+  if (policy.web_filter_mode === 'whitelist') {
+    return !policy.whitelist.some((rule) => domainMatches(hostname, rule));
+  }
+  return policy.blacklist.some((rule) => domainMatches(hostname, rule));
+}
+
+function reportBlockedHost(hostname) {
+  const host = String(hostname || '').toLowerCase();
+  if (!host) return;
+  const now = Date.now();
+  const lastReported = recentlyReportedBlockedHosts.get(host) || 0;
+  if (now - lastReported < 30_000) return;
+  recentlyReportedBlockedHosts.set(host, now);
+
+  const activity = {
+    activity_type: 'browser_url',
+    url: `https://${host}`,
+    url_domain: host,
+    page_title: 'Diblokir oleh kebijakan LabKom',
+    blocked: true,
+    session_id: activeSessionId || null,
+    activity_at: new Date(now).toISOString(),
+  };
+  if (realtimeSocket?.connected) realtimeSocket.emit('client:activity', activity);
+  else postActivityToServer(loadServerConfig().serverUrl, activity);
+}
+
+function sendProxyBlocked(res, hostname) {
+  const body = Buffer.from(`<!doctype html><meta charset="utf-8"><title>Akses diblokir</title><style>body{font-family:Segoe UI,sans-serif;background:#0f172a;color:#fff;display:grid;place-items:center;min-height:100vh;margin:0}main{max-width:560px;padding:40px;text-align:center}h1{color:#fbbf24}</style><main><h1>Akses diblokir</h1><p>${String(hostname || 'Situs ini').replace(/[<>&]/g, '')} dibatasi oleh kebijakan Lab Komputer.</p></main>`);
+  res.writeHead(403, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': body.length });
+  res.end(body);
+}
+
+async function ensurePolicyProxy() {
+  if (policyProxyServer && policyProxyPort) return policyProxyPort;
+  policyProxyServer = http.createServer((req, res) => {
+    let target;
+    try { target = new URL(req.url); }
+    catch {
+      res.writeHead(400);
+      res.end('Permintaan proxy tidak valid.');
+      return;
+    }
+    if (shouldBlockHost(target.hostname)) {
+      reportBlockedHost(target.hostname);
+      sendProxyBlocked(res, target.hostname);
+      return;
+    }
+    const headers = { ...req.headers, host: target.host };
+    delete headers['proxy-connection'];
+    const transport = target.protocol === 'https:' ? https : http;
+    const upstream = transport.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: target.port || (target.protocol === 'https:' ? 443 : 80),
+      method: req.method,
+      path: `${target.pathname}${target.search}`,
+      headers,
+    }, (upstreamRes) => {
+      res.writeHead(upstreamRes.statusCode || 502, upstreamRes.headers);
+      upstreamRes.pipe(res);
+    });
+    upstream.on('error', () => {
+      if (!res.headersSent) res.writeHead(502);
+      res.end('Situs tidak dapat dijangkau.');
+    });
+    req.pipe(upstream);
+  });
+
+  policyProxyServer.on('connect', (req, clientSocket, head) => {
+    let parsed;
+    try { parsed = new URL(`http://${req.url}`); }
+    catch { clientSocket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); return; }
+    if (shouldBlockHost(parsed.hostname)) {
+      reportBlockedHost(parsed.hostname);
+      clientSocket.end('HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain\r\n\r\nAkses diblokir oleh kebijakan Lab Komputer.');
+      return;
+    }
+    const upstream = net.connect(Number(parsed.port) || 443, parsed.hostname, () => {
+      clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      if (head?.length) upstream.write(head);
+      upstream.pipe(clientSocket);
+      clientSocket.pipe(upstream);
+    });
+    upstream.on('error', () => clientSocket.end('HTTP/1.1 502 Bad Gateway\r\n\r\n'));
+  });
+
+  policyProxyServer.on('clientError', (_error, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'));
+  await new Promise((resolve, reject) => {
+    policyProxyServer.once('error', reject);
+    policyProxyServer.listen(0, '127.0.0.1', () => resolve());
+  });
+  policyProxyPort = policyProxyServer.address().port;
+  return policyProxyPort;
+}
+
+function writeVolumePolicyScript() {
+  const destination = path.join(app.getPath('userData'), 'labkom-volume.ps1');
+  if (fs.existsSync(destination)) return destination;
+  const script = String.raw`param([int]$Volume = 75, [bool]$Muted = $false)
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+[ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")] class MMDeviceEnumerator {}
+enum EDataFlow { eRender, eCapture, eAll }
+enum ERole { eConsole, eMultimedia, eCommunications }
+[Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDeviceEnumerator { int NotImpl1(); int GetDefaultAudioEndpoint(EDataFlow dataFlow, ERole role, out IMMDevice ppDevice); }
+[Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IMMDevice { int Activate(ref Guid iid, int dwClsCtx, IntPtr pActivationParams, [MarshalAs(UnmanagedType.IUnknown)] out object ppInterface); }
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+  int RegisterControlChangeNotify(IntPtr pNotify); int UnregisterControlChangeNotify(IntPtr pNotify); int GetChannelCount(out uint count);
+  int SetMasterVolumeLevel(float level, Guid context); int SetMasterVolumeLevelScalar(float level, Guid context);
+  int GetMasterVolumeLevel(out float level); int GetMasterVolumeLevelScalar(out float level);
+  int SetChannelVolumeLevel(uint channel, float level, Guid context); int SetChannelVolumeLevelScalar(uint channel, float level, Guid context);
+  int GetChannelVolumeLevel(uint channel, out float level); int GetChannelVolumeLevelScalar(uint channel, out float level);
+  int SetMute([MarshalAs(UnmanagedType.Bool)] bool mute, Guid context); int GetMute(out bool mute);
+}
+public static class LabKomAudio {
+  static IAudioEndpointVolume Endpoint() {
+    var enumerator = new MMDeviceEnumerator() as IMMDeviceEnumerator; IMMDevice device;
+    Marshal.ThrowExceptionForHR(enumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eMultimedia, out device));
+    Guid iid = typeof(IAudioEndpointVolume).GUID; object endpoint;
+    Marshal.ThrowExceptionForHR(device.Activate(ref iid, 23, IntPtr.Zero, out endpoint)); return (IAudioEndpointVolume)endpoint;
+  }
+  public static void Apply(float volume, bool muted) { var endpoint = Endpoint(); var context = Guid.Empty; endpoint.SetMasterVolumeLevelScalar(volume, context); endpoint.SetMute(muted, context); }
+}
+'@
+$level = [Math]::Max(0, [Math]::Min(100, $Volume)) / 100.0
+[LabKomAudio]::Apply([single]$level, $Muted)`;
+  fs.writeFileSync(destination, script, 'utf-8');
+  return destination;
+}
+
+async function applySystemVolume(policy) {
+  if (process.platform !== 'win32') return true;
+  const script = writeVolumePolicyScript();
+  const result = await runHiddenProcess('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
+    '-File', script, '-Volume', String(policy.master_volume), '-Muted', String(policy.master_muted),
+  ]);
+  return result.success;
+}
+
+function downloadPolicyWallpaper(url, redirects = 0) {
+  return new Promise((resolve, reject) => {
+    if (redirects > 3) return reject(new Error('Terlalu banyak redirect wallpaper.'));
+    let parsed;
+    try { parsed = new URL(url); }
+    catch { return reject(new Error('URL wallpaper tidak valid.')); }
+    if (!['http:', 'https:'].includes(parsed.protocol)) return reject(new Error('Protokol wallpaper tidak didukung.'));
+    const transport = parsed.protocol === 'https:' ? https : http;
+    const request = transport.get(parsed, { timeout: 10_000, headers: { 'User-Agent': 'LabKom-Siswa/1.0' } }, (response) => {
+      if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+        response.resume();
+        const nextUrl = new URL(response.headers.location, parsed).toString();
+        downloadPolicyWallpaper(nextUrl, redirects + 1).then(resolve, reject);
+        return;
+      }
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Wallpaper HTTP ${response.statusCode}`));
+        return;
+      }
+      const contentType = String(response.headers['content-type'] || '').toLowerCase();
+      const extension = contentType.includes('png') ? '.png' : contentType.includes('bmp') ? '.bmp' : '.jpg';
+      const destination = path.join(app.getPath('userData'), `policy-wallpaper${extension}`);
+      const chunks = [];
+      let size = 0;
+      response.on('data', (chunk) => {
+        size += chunk.length;
+        if (size > 10 * 1024 * 1024) request.destroy(new Error('Wallpaper melebihi 10 MB.'));
+        else chunks.push(chunk);
+      });
+      response.on('end', () => {
+        if (!size) return reject(new Error('Wallpaper kosong.'));
+        fs.writeFileSync(destination, Buffer.concat(chunks));
+        resolve(destination);
+      });
+    });
+    request.on('timeout', () => request.destroy(new Error('Unduhan wallpaper timeout.')));
+    request.on('error', reject);
+  });
+}
+
+async function applyDesktopWallpaper(policy) {
+  if (process.platform !== 'win32' || !policy.wallpaper_url || !['desktop', 'both'].includes(policy.wallpaper_target)) return true;
+  const wallpaperPath = await downloadPolicyWallpaper(policy.wallpaper_url);
+  const scriptPath = path.join(app.getPath('userData'), 'labkom-wallpaper.ps1');
+  const script = String.raw`param([string]$ImagePath)
+Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value '10'
+Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value '0'
+Add-Type -Name NativeMethods -Namespace LabKom -MemberDefinition '[DllImport("user32.dll", SetLastError=true, CharSet=CharSet.Auto)] public static extern int SystemParametersInfo(int action, int param, string value, int flags);'
+[LabKom.NativeMethods]::SystemParametersInfo(20, 0, $ImagePath, 3) | Out-Null`;
+  fs.writeFileSync(scriptPath, script, 'utf-8');
+  const result = await runHiddenProcess('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass',
+    '-File', scriptPath, '-ImagePath', wallpaperPath,
+  ]);
+  return result.success;
+}
+
+async function applyWebFilter(policy) {
+  if (process.platform !== 'win32') return true;
+  if (!policy.web_filter_enabled) return restoreSystemProxy();
+  const port = await ensurePolicyProxy();
+  return applySystemProxy(port);
+}
+
+async function applyControlPolicy(policy) {
+  const normalized = normalizeClientPolicy(policy);
+  latestControlPolicy = normalized;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('control-settings', normalized);
+  }
+  const [volume, wallpaper, webFilter] = await Promise.all([
+    applySystemVolume(normalized).catch(() => false),
+    applyDesktopWallpaper(normalized).catch(() => false),
+    applyWebFilter(normalized).catch(() => false),
+  ]);
+  realtimeSocket?.emit('client:policy-status', {
+    volume,
+    wallpaper,
+    web_filter: webFilter,
+    message: [volume && 'volume', wallpaper && 'wallpaper', webFilter && 'web filter'].filter(Boolean).join(', '),
+  });
+  return { volume, wallpaper, web_filter: webFilter };
+}
+
+function executeSystemCommand(payload = {}) {
+  const command = String(payload.command || '').toLowerCase();
+  const commandId = String(payload.id || '').trim();
+  const allowed = new Set(['lock', 'sleep', 'restart', 'shutdown']);
+  if (!allowed.has(command) || !/^cmd_[A-Za-z0-9_-]{8,80}$/.test(commandId)) return;
+  if (executedCommandIds.has(commandId)) return;
+  executedCommandIds.add(commandId);
+  if (executedCommandIds.size > 100) executedCommandIds.delete(executedCommandIds.values().next().value);
+
+  const acknowledge = (success, message) => realtimeSocket?.emit('client:system-command-ack', {
+    command_id: commandId,
+    command,
+    success,
+    message,
+  });
+  if (process.platform !== 'win32') {
+    acknowledge(false, 'Perintah daya hanya tersedia pada Windows.');
+    return;
+  }
+
+  acknowledge(true, 'Perintah diterima oleh client.');
+  if (command === 'lock') {
+    spawn('rundll32.exe', ['user32.dll,LockWorkStation'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  } else if (command === 'sleep') {
+    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend',$false,$false)"], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  } else if (command === 'restart') {
+    spawn('shutdown.exe', ['/r', '/t', '15', '/c', 'Restart dijadwalkan oleh LabKom Admin.'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  } else if (command === 'shutdown') {
+    spawn('shutdown.exe', ['/s', '/t', '15', '/c', 'Shutdown dijadwalkan oleh LabKom Admin.'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  }
 }
 
 async function connectRealtime(serverUrl) {
@@ -843,7 +1498,7 @@ async function connectRealtime(serverUrl) {
       transports: ['websocket', 'polling'],
       reconnection: true,
       timeout: 5000,
-      auth: { role: 'client', client_token: clientToken },
+      auth: { role: 'client', client_token: clientToken, channel: 'main' },
     });
 
     realtimeSocket.on('connect', () => {
@@ -862,6 +1517,22 @@ async function connectRealtime(serverUrl) {
       applyCaptureProfile(payload.mode || 'overview');
     });
 
+    realtimeSocket.on('control:settings', (payload = {}) => {
+      latestControlPolicy = normalizeClientPolicy(payload);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('control-settings', latestControlPolicy);
+      }
+      if (activeSessionId) {
+        applyControlPolicy(latestControlPolicy).catch((error) => {
+          log.warn('[POLICY] Gagal menerapkan kebijakan:', error.message);
+        });
+      }
+    });
+
+    realtimeSocket.on('system:command', (payload = {}) => {
+      executeSystemCommand(payload);
+    });
+
     realtimeSocket.on('disconnect', () => {
       applyCaptureProfile('overview');
     });
@@ -875,7 +1546,7 @@ async function connectRealtime(serverUrl) {
         setStoredClientToken(null);
         const fresh = await requestDeviceToken(serverUrl);
         if (fresh && realtimeSocket) {
-          realtimeSocket.auth = { role: 'client', client_token: fresh };
+          realtimeSocket.auth = { role: 'client', client_token: fresh, channel: 'main' };
         }
       }
     });
@@ -1088,6 +1759,9 @@ ipcMain.on('login-success', (_event, studentData) => {
     startScreenShare(cfg.serverUrl, studentData?.nama_lengkap);
     startActivityMonitoring(studentData);
   }
+  if (latestControlPolicy) {
+    applyControlPolicy(latestControlPolicy).catch((error) => log.warn('[POLICY] Gagal diterapkan saat login:', error.message));
+  }
 });
 
 // ── IPC: Resize widget dari React ────────────────────────────────
@@ -1135,6 +1809,8 @@ ipcMain.on('do-logout', () => {
     activityMonitor = null;
     log.info('[ACTIVITY] Monitoring dihentikan');
   }
+
+  restoreSystemProxy().catch((error) => log.warn('[POLICY] Gagal memulihkan proxy:', error.message));
 
   applyWindowLayout('login');
   scheduleFocusRecovery(50);
@@ -1422,17 +2098,12 @@ ipcMain.handle('api-request', async (_event, url, options = {}) => {
   return result;
 
 });
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await restoreSystemProxy().catch(() => false);
+  clientSettings = loadClientSettings();
+  applyClientSettings(clientSettings);
   // ── Daftarkan ke Windows Startup ─────────────────────────────
   // Agar app otomatis berjalan saat PC dinyalakan (kiosk mode)
-  if (!isDev) {
-    app.setLoginItemSettings({
-      openAtLogin: true,
-      openAsHidden: false,
-      name: 'LabKom Siswa',
-    });
-  }
-
   createWindow();
   applyWindowLayout('login');
   startDiscoveryListener(); // → Dengarkan broadcast admin
@@ -1451,11 +2122,12 @@ app.whenReady().then(() => {
   if (!isDev) installWatchdog();
 
   // Silent update check 30 detik setelah startup (hanya production)
-  if (!isDev) {
+  if (!isDev && clientSettings.autoUpdate) {
     setTimeout(() => {
       autoUpdater.checkForUpdates().catch(() => {});
     }, 30_000);
   }
+  scheduleUpdateChecks();
 
   // ── Shortcut keluar untuk Kepala Lab (Ctrl+Alt+Q) ───────────────
   globalShortcut.register('Ctrl+Alt+Q', () => {
@@ -1523,11 +2195,17 @@ app.on('second-instance', () => {
 });
 
 app.on('will-quit', () => {
+  if (updateCheckTimer) { clearInterval(updateCheckTimer); updateCheckTimer = null; }
   stopDiscoveryListener();
   stopPresenceHeartbeat();
   disconnectRealtime();
   stopKeyboardHook();
   showTaskbar(); // Safety net: selalu pulihkan taskbar
+  if (policyProxyServer) {
+    try { policyProxyServer.close(); } catch {}
+    policyProxyServer = null;
+    policyProxyPort = null;
+  }
   if (cmdPollTimer) { clearInterval(cmdPollTimer); cmdPollTimer = null; }
 
   // Cleanup Activity Monitor

@@ -4,10 +4,19 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   // ── Read ────────────────────────────────────────────────────────
   getPcName: () => ipcRenderer.invoke('get-pc-name'),
+  getControlPolicy: () => ipcRenderer.invoke('get-control-policy'),
 
   // ── Konfigurasi URL server (disimpan di userData) ───────────────
   getServerUrl:  ()    => ipcRenderer.invoke('get-server-url'),
   saveServerUrl: (url) => ipcRenderer.send('save-server-url', url),
+
+  // Pengaturan PC siswa dan pembaruan aplikasi.
+  getClientSettings:  ()       => ipcRenderer.invoke('get-client-settings'),
+  saveClientSettings: (data)   => ipcRenderer.invoke('save-client-settings', data),
+  checkForUpdates:    ()       => ipcRenderer.invoke('check-client-update'),
+  downloadUpdate:     ()       => ipcRenderer.invoke('download-client-update'),
+  installUpdate:      ()       => ipcRenderer.send('install-client-update'),
+  onUpdateStatus:     (cb)     => ipcRenderer.on('client-update-status', (_e, data) => cb(data)),
 
   // ── Login / Logout IPC ──────────────────────────────────────────
   loginSuccess:  (studentData) => ipcRenderer.send('login-success', studentData),
@@ -35,6 +44,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Trigger dialog keluar dari main process (globalShortcut) ────
   onShowAdminDialog: (cb) => ipcRenderer.on('show-admin-dialog', () => cb()),
+  onControlSettings: (cb) => ipcRenderer.on('control-settings', (_e, data) => cb(data)),
 
   // ── Verify server reachable dari main process (bukan renderer) ────
   verifyServer: (url) => ipcRenderer.invoke('verify-server', url),
@@ -47,6 +57,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Device token untuk socket auth (di-issue oleh main process) ──
   getClientToken: () => ipcRenderer.invoke('get-client-token'),
+
+  // Simpan file kelas yang diterima ke Downloads/LabKom.
+  saveReceivedFile: (payload) => ipcRenderer.invoke('save-received-file', payload),
+  showReceivedFile: (filePath) => ipcRenderer.invoke('show-received-file', filePath),
 
   // ── Verify emergency password tanpa expose plaintext ke renderer ──
   verifyEmergencyPassword: (pw) => ipcRenderer.invoke('verify-emergency-password', pw),

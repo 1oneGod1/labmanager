@@ -8,6 +8,9 @@ async function submitCheck(req, res) {
     // Pre-check
     cpu_status, cpu_note,
     monitor_status, monitor_note,
+    keyboard_status, keyboard_note,
+    mouse_status, mouse_note,
+    headset_status, headset_note,
     desk_status, desk_note,
     // Post-check
     hw_status, hw_note,
@@ -40,6 +43,9 @@ async function submitCheck(req, res) {
       session_id, nis, nama_lengkap, pc_name: claimedPcName, check_type,
       cpu_status, cpu_note,
       monitor_status, monitor_note,
+      keyboard_status, keyboard_note,
+      mouse_status, mouse_note,
+      headset_status, headset_note,
       desk_status, desk_note,
       hw_status, hw_note,
       cleanliness_status, cleanliness_note,

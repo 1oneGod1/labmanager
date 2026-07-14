@@ -12,8 +12,32 @@ const {
   getActiveScreens,
 } = require('./services/screenRelayService');
 const firebaseService = require('./services/firebaseService');
+const {
+  validateDistributionPayload,
+  normalizeFileStatus,
+} = require('./services/fileRelayService');
+const { normalizeControlSettings } = require('./services/controlPolicyService');
 
 const screenWatchers = new Map();
+const SYSTEM_COMMANDS = new Set(['lock', 'sleep', 'restart', 'shutdown']);
+
+function getClientChannel(socket) {
+  return socket.data.channel === 'main' ? 'main' : 'renderer';
+}
+
+function emitToClientChannel(io, channel, eventName, payload, target = 'all') {
+  const normalizedTarget = target && target !== 'all' ? normalizePcName(target) : null;
+  const deliveredPcs = new Set();
+  for (const [, clientSocket] of io.sockets.sockets) {
+    if (clientSocket.data.role !== 'client') continue;
+    if (getClientChannel(clientSocket) !== channel) continue;
+    const pcName = normalizePcName(clientSocket.data.claimed_pc_name || clientSocket.data.pc_name);
+    if (!pcName || (normalizedTarget && pcName !== normalizedTarget)) continue;
+    clientSocket.emit(eventName, payload);
+    deliveredPcs.add(pcName);
+  }
+  return deliveredPcs.size;
+}
 
 function getClientRoom(pcName) {
   const normalizedPcName = normalizePcName(pcName);
@@ -82,6 +106,7 @@ function attachRealtimeHub(httpServer) {
       return next(new Error('unauthorized client — token invalid atau expired'));
     }
     socket.data.role = 'client';
+    socket.data.channel = socket.handshake.auth?.channel === 'main' ? 'main' : 'renderer';
     socket.data.device_id = claim.device_id;
     socket.data.claimed_pc_name = claim.pc_name;
     socket.data.pc_name = claim.pc_name;
@@ -131,14 +156,7 @@ function attachRealtimeHub(httpServer) {
           timestamp: ts || new Date().toISOString(),
         };
 
-        // Send to all non-admin sockets (clients)
-        let count = 0;
-        for (const [, s] of io.sockets.sockets) {
-          if (s.data.role !== 'admin') {
-            s.emit('chat:message-from-admin', payload);
-            count++;
-          }
-        }
+        const count = emitToClientChannel(io, 'renderer', 'chat:message-from-admin', payload);
 
         // Save to Firebase (async, don't block)
         saveChatMessage({ ...payload, type: 'admin_broadcast', delivered_to: count }).catch(err => {
@@ -148,33 +166,63 @@ function attachRealtimeHub(httpServer) {
         callback?.({ success: true, count });
       });
 
+      // File kelas: relay file kecil langsung ke client terautentikasi.
+      socket.on('admin:file-distribute', (data, callback) => {
+        const validated = validateDistributionPayload(data);
+        if (!validated.ok) {
+          callback?.({ success: false, error: validated.error });
+          return;
+        }
+
+        const count = emitToClientChannel(io, 'renderer', 'classroom:file-received', validated.payload);
+
+        callback?.({ success: true, count, distribution_id: validated.payload.id });
+      });
+
+      socket.on('admin:file-collection-request', (data = {}, callback) => {
+        const id = String(data.id || '').trim();
+        const label = String(data.label || '').trim().replace(/[\u0000-\u001F]/g, ' ').slice(0, 120);
+        if (!/^collect_[A-Za-z0-9_-]{6,70}$/.test(id) || !label) {
+          callback?.({ success: false, error: 'Permintaan pengumpulan tidak valid.' });
+          return;
+        }
+        const payload = { id, label, requested_at: new Date().toISOString() };
+        const count = emitToClientChannel(io, 'renderer', 'classroom:file-collection-request', payload);
+        callback?.({ success: true, count, collection_id: id });
+      });
+
+      socket.on('admin:system-command', (data = {}, callback) => {
+        const command = String(data.command || '').toLowerCase();
+        const target = data.target && data.target !== 'all' ? normalizePcName(data.target) : 'all';
+        if (!SYSTEM_COMMANDS.has(command) || !target) {
+          callback?.({ success: false, error: 'Perintah sistem tidak valid.' });
+          return;
+        }
+        const payload = {
+          id: `cmd_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          command,
+          target,
+          requested_at: new Date().toISOString(),
+        };
+        const count = emitToClientChannel(io, 'main', 'system:command', payload, target);
+        callback?.({ success: true, count, command_id: payload.id });
+      });
+
       // ── Admin Screen Share ─────────────────────────────────────
       socket.on('admin:screen-share-start', () => {
         // Notify all clients that admin started sharing
-        for (const [, s] of io.sockets.sockets) {
-          if (s.data.role !== 'admin') {
-            s.emit('admin:screen-share-start');
-          }
-        }
+        emitToClientChannel(io, 'renderer', 'admin:screen-share-start', {});
       });
 
       socket.on('admin:screen-share-frame', (data = {}) => {
         if (!data.image) return;
         // Relay frame to all clients
-        for (const [, s] of io.sockets.sockets) {
-          if (s.data.role !== 'admin') {
-            s.emit('admin:screen-share-frame', { image: data.image });
-          }
-        }
+        emitToClientChannel(io, 'renderer', 'admin:screen-share-frame', { image: data.image });
       });
 
       socket.on('admin:screen-share-stop', () => {
         // Notify all clients that admin stopped sharing
-        for (const [, s] of io.sockets.sockets) {
-          if (s.data.role !== 'admin') {
-            s.emit('admin:screen-share-stop');
-          }
-        }
+        emitToClientChannel(io, 'renderer', 'admin:screen-share-stop', {});
       });
 
       // ── Attention Mode (Blank Screen) ──────────────────────────
@@ -187,13 +235,9 @@ function attachRealtimeHub(httpServer) {
 
         if (target && target !== 'all') {
           // Send to specific PC
-          const targetRoom = getClientRoom(target);
-          if (targetRoom) {
-            io.to(targetRoom).emit('attention-mode', payload);
-          }
+          emitToClientChannel(io, 'renderer', 'attention-mode', payload, target);
         } else {
-          // Broadcast to all clients
-          io.emit('attention-mode', payload);
+          emitToClientChannel(io, 'renderer', 'attention-mode', payload);
         }
 
         // Notify other admins
@@ -209,6 +253,14 @@ function attachRealtimeHub(httpServer) {
       });
 
       return;
+    }
+
+    socket.join('clients');
+    socket.join(`clients-${getClientChannel(socket)}`);
+    if (getClientChannel(socket) === 'main') {
+      firebaseService.control.getAll()
+        .then((settings) => socket.emit('control:settings', normalizeControlSettings(settings)))
+        .catch((error) => console.error('[CONTROL] Failed to load client policy:', error.message));
     }
 
     const bindClientRoom = (pcName) => {
@@ -318,6 +370,81 @@ function attachRealtimeHub(httpServer) {
       });
     });
 
+    socket.on('client:file-status', (payload = {}) => {
+      const pcName = normalizePcName(socket.data.pc_name);
+      const distributionId = String(payload.distribution_id || '').trim();
+      const status = normalizeFileStatus(payload.status);
+      if (!pcName || !status || !/^[A-Za-z0-9_-]{8,80}$/.test(distributionId)) return;
+
+      io.to('admins').emit('client:file-status', {
+        pc_name: pcName,
+        distribution_id: distributionId,
+        status,
+        size: Number(payload.size) || 0,
+        received_at: Date.now(),
+      });
+    });
+
+    socket.on('client:file-submission', (payload = {}, callback) => {
+      const pcName = normalizePcName(socket.data.pc_name);
+      const collectionId = String(payload.collection_id || '').trim();
+      if (!pcName || !/^collect_[A-Za-z0-9_-]{6,70}$/.test(collectionId)) {
+        callback?.({ success: false, error: 'Identitas pengumpulan tidak valid.' });
+        return;
+      }
+
+      const validated = validateDistributionPayload({
+        id: collectionId,
+        name: payload.name,
+        type: payload.type,
+        size: payload.size,
+        data: payload.data,
+      });
+      if (!validated.ok) {
+        callback?.({ success: false, error: validated.error });
+        return;
+      }
+
+      io.to('admins').emit('client:file-submission', {
+        ...validated.payload,
+        collection_id: collectionId,
+        pc_name: pcName,
+        student_name: String(payload.student_name || '').trim().slice(0, 120) || null,
+        submitted_at: new Date().toISOString(),
+      });
+      callback?.({ success: true, collection_id: collectionId });
+    });
+
+    socket.on('client:system-command-ack', (payload = {}) => {
+      if (getClientChannel(socket) !== 'main') return;
+      const pcName = normalizePcName(socket.data.pc_name);
+      const command = String(payload.command || '').toLowerCase();
+      const commandId = String(payload.command_id || '').trim();
+      if (!pcName || !SYSTEM_COMMANDS.has(command) || !/^cmd_[A-Za-z0-9_-]{8,80}$/.test(commandId)) return;
+      io.to('admins').emit('client:system-command-ack', {
+        pc_name: pcName,
+        command,
+        command_id: commandId,
+        success: payload.success !== false,
+        message: String(payload.message || '').slice(0, 240),
+        acknowledged_at: Date.now(),
+      });
+    });
+
+    socket.on('client:policy-status', (payload = {}) => {
+      if (getClientChannel(socket) !== 'main') return;
+      const pcName = normalizePcName(socket.data.pc_name);
+      if (!pcName) return;
+      io.to('admins').emit('client:policy-status', {
+        pc_name: pcName,
+        volume: payload.volume !== false,
+        wallpaper: payload.wallpaper !== false,
+        web_filter: payload.web_filter !== false,
+        message: String(payload.message || '').slice(0, 240),
+        applied_at: Date.now(),
+      });
+    });
+
     // ── Activity Monitoring ────────────────────────────────────
     socket.on('client:activity', async (activity = {}) => {
       const pcName = normalizePcName(socket.data.pc_name);
@@ -339,6 +466,7 @@ function attachRealtimeHub(httpServer) {
     socket.on('disconnect', () => {
       const pcName = normalizePcName(socket.data.pc_name);
       if (!pcName) return;
+      if (getClientChannel(socket) !== 'main') return;
 
       markClientDisconnected(pcName, socket.id);
       if (removeScreen(pcName)) {

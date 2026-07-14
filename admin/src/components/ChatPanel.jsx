@@ -9,7 +9,7 @@ import { MessageCircle, Send, X, Minimize2, Users, Loader2 } from 'lucide-react'
  * - Minimize/maximize panel
  * - Real-time via socket.io
  */
-export default function ChatPanel({ socket }) {
+export default function ChatPanel({ socket, onlineCount: externalOnlineCount = null }) {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [message, setMessage] = useState('');
@@ -18,6 +18,12 @@ export default function ChatPanel({ socket }) {
   const [onlineCount, setOnlineCount] = useState(0);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  useEffect(() => {
+    const openPanel = () => setIsOpen(true);
+    window.addEventListener('labkom:open-chat', openPanel);
+    return () => window.removeEventListener('labkom:open-chat', openPanel);
+  }, []);
 
   // Auto scroll ke pesan terbaru
   const scrollToBottom = () => {
@@ -121,20 +127,7 @@ export default function ChatPanel({ socket }) {
 
   // Floating chat button
   if (!isOpen) {
-    return (
-      <button
-        onClick={() => setIsOpen(true)}
-        className="fixed bottom-6 right-6 z-50 w-14 h-14 bg-gradient-to-br from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 group"
-        title="Buka Chat dengan Siswa"
-      >
-        <MessageCircle className="w-6 h-6" />
-        {messages.filter((m) => m.type === 'received' && !m.read).length > 0 && (
-          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs font-bold rounded-full flex items-center justify-center animate-pulse">
-            {messages.filter((m) => m.type === 'received' && !m.read).length}
-          </span>
-        )}
-      </button>
-    );
+    return null;
   }
 
   return (
@@ -153,7 +146,7 @@ export default function ChatPanel({ socket }) {
             <h3 className="font-bold text-base">Chat dengan Siswa</h3>
             <p className="text-xs text-blue-100 flex items-center space-x-1">
               <Users className="w-3 h-3" />
-              <span>{onlineCount} siswa online</span>
+              <span>{Number.isFinite(externalOnlineCount) ? externalOnlineCount : onlineCount} siswa online</span>
             </p>
           </div>
         </div>

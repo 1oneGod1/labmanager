@@ -1,0 +1,102 @@
+name: Release LabKom Apps
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'admin/**'
+      - 'client/**'
+      - 'server/**'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Versi opsional, contoh: 1.2.0 (kosong = dibuat otomatis)'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            server/package-lock.json
+            client/package-lock.json
+            admin/package-lock.json
+
+      - name: Determine release version
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch' -and '${{ inputs.version }}') {
+            $version = '${{ inputs.version }}'
+          } else {
+            $package = Get-Content 'client/package.json' -Raw | ConvertFrom-Json
+            $parts = $package.version.Split('.')
+            $buildNumber = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+            $version = "$($parts[0]).$($parts[1]).$buildNumber"
+          }
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$') {
+            throw "Versi tidak valid: $version"
+          }
+          "RELEASE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Set client version
+        working-directory: client
+        run: npm version "$env:RELEASE_VERSION" --no-git-tag-version
+
+      - name: Build and publish Student app
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run electron:build -- --publish always
+
+      - name: Install admin dependencies
+        working-directory: admin
+        run: npm ci
+
+      - name: Set admin version
+        working-directory: admin
+        run: npm version "$env:RELEASE_VERSION" --no-git-tag-version
+
+      - name: Build and publish Admin app
+        working-directory: admin
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run electron:build -- --publish always
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: labkom-installers-${{ env.RELEASE_VERSION }}
+          path: |
+            client/dist-electron/*.exe
+            client/dist-electron/*.yml
+            client/dist-electron/*.blockmap
+            admin/dist-electron/*.exe
+            admin/dist-electron/*.yml
+            admin/dist-electron/*.blockmap
