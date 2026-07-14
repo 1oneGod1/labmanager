@@ -27,7 +27,7 @@ body {
   overflow: hidden;
   background: var(--lab-bg);
   color: var(--lab-text);
-  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-family: "Manrope Variable", "Segoe UI", sans-serif;
 }
 
 .labkom-admin button,
@@ -152,7 +152,7 @@ body {
 .labkom-clock {
   min-width: 62px;
   color: var(--lab-text);
-  font-family: "IBM Plex Mono", monospace;
+  font-family: "JetBrains Mono Variable", Consolas, monospace;
   font-size: 12px;
   font-weight: 600;
   text-align: right;
@@ -304,7 +304,7 @@ body {
 .labkom-pc-meta { padding: 8px 9px 9px; }
 .labkom-pc-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .labkom-pc-title strong { min-width: 0; flex: 1; overflow: hidden; color: var(--lab-text); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
-.labkom-pc-id { display: block; margin-top: 3px; color: var(--lab-text-3); font-family: "IBM Plex Mono", monospace; font-size: 8.5px; }
+.labkom-pc-id { display: block; margin-top: 3px; color: var(--lab-text-3); font-family: "JetBrains Mono Variable", Consolas, monospace; font-size: 8.5px; }
 
 .labkom-status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--lab-text-3); }
 .labkom-status-dot.is-active { background: var(--lab-green); }
@@ -326,7 +326,7 @@ body {
 
 .labkom-stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px; }
 .labkom-stat { padding: 12px; border: 1px solid var(--lab-line); border-radius: 9px; background: var(--lab-panel-2); }
-.labkom-stat strong { display: block; color: var(--lab-text); font: 700 20px/1 "IBM Plex Mono", monospace; }
+.labkom-stat strong { display: block; color: var(--lab-text); font: 700 20px/1 "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-stat span { display: flex; align-items: center; gap: 5px; margin-top: 8px; color: var(--lab-text-2); font-size: 9px; }
 
 .labkom-panel-section { margin: 0 14px 12px; overflow: hidden; border: 1px solid var(--lab-line); border-radius: 10px; background: var(--lab-panel-2); }
@@ -336,7 +336,7 @@ body {
 .labkom-feed-icon { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 30px; border-radius: 8px; background: rgba(255, 200, 61, 0.12); color: var(--lab-yellow); }
 .labkom-feed-copy { min-width: 0; flex: 1; }
 .labkom-feed-copy strong { display: block; overflow: hidden; color: var(--lab-text); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
-.labkom-feed-copy span { display: block; margin-top: 2px; overflow: hidden; color: var(--lab-text-3); font: 9px "IBM Plex Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-feed-copy span { display: block; margin-top: 2px; overflow: hidden; color: var(--lab-text-3); font: 9px "JetBrains Mono Variable", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 
 .labkom-selected-preview { margin: 14px; overflow: hidden; border: 1px solid var(--lab-line); border-radius: 10px; background: #080e19; }
 .labkom-selected-preview .frame { aspect-ratio: 16 / 9; display: grid; place-items: center; color: var(--lab-text-3); }
@@ -344,7 +344,7 @@ body {
 .labkom-selected-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 14px 14px; }
 .labkom-selected-meta div { padding: 9px; border: 1px solid var(--lab-line); border-radius: 8px; background: var(--lab-panel-2); }
 .labkom-selected-meta span { display: block; color: var(--lab-text-3); font-size: 8.5px; text-transform: uppercase; letter-spacing: .05em; }
-.labkom-selected-meta strong { display: block; margin-top: 4px; overflow: hidden; color: var(--lab-text); font: 10px "IBM Plex Mono", monospace; text-overflow: ellipsis; white-space: nowrap; }
+.labkom-selected-meta strong { display: block; margin-top: 4px; overflow: hidden; color: var(--lab-text); font: 10px "JetBrains Mono Variable", Consolas, monospace; text-overflow: ellipsis; white-space: nowrap; }
 .labkom-quick-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; padding: 0 14px 14px; }
 .labkom-quick-grid button { min-height: 58px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 1px solid var(--lab-line); border-radius: 8px; background: var(--lab-panel-2); color: var(--lab-text-2); font-size: 9px; }
 .labkom-quick-grid button:hover { transform: translateY(-1px); border-color: var(--lab-line-strong); background: var(--lab-elev); color: var(--lab-text); }
@@ -358,7 +358,7 @@ body {
 .labkom-remote-toolbar { height: 55px; display: flex; align-items: center; gap: 10px; padding: 0 16px; border-bottom: 1px solid var(--lab-line); background: var(--lab-screen); }
 .labkom-remote-toolbar .identity { min-width: 0; flex: 1; }
 .labkom-remote-toolbar strong { display: block; color: var(--lab-text); font-size: 12px; }
-.labkom-remote-toolbar span { display: block; color: var(--lab-text-3); font: 9px "IBM Plex Mono", monospace; }
+.labkom-remote-toolbar span { display: block; color: var(--lab-text-3); font: 9px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-remote-screen { min-height: 0; flex: 1; display: grid; place-items: center; padding: 24px; }
 .labkom-remote-screen img { max-width: 100%; max-height: 100%; border: 1px solid var(--lab-line); border-radius: 8px; object-fit: contain; box-shadow: 0 24px 70px rgba(0, 0, 0, .45); }
 .labkom-remote-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--lab-text-3); font-size: 11px; }
@@ -434,7 +434,7 @@ body {
 .labkom-data-table td { height: 48px; padding: 7px 14px; border-bottom: 1px solid var(--lab-line); }
 .labkom-data-table tbody tr { transition: 120ms ease; }
 .labkom-data-table tbody tr:hover { background: rgba(90, 162, 255, .04); }
-.labkom-mono { color: var(--lab-text-2); font-family: "IBM Plex Mono", monospace; font-size: 9.5px; }
+.labkom-mono { color: var(--lab-text-2); font-family: "JetBrains Mono Variable", Consolas, monospace; font-size: 9.5px; }
 .labkom-empty { min-height: 180px; display: flex; align-items: center; justify-content: center; gap: 9px; color: var(--lab-text-3); font-size: 11px; }
 .labkom-empty svg { width: 18px; height: 18px; }
 
@@ -484,7 +484,7 @@ body {
 .labkom-progress { min-width: 140px; }
 .labkom-progress > div { min-width: 0; flex: 1; height: 5px; overflow: hidden; border-radius: 99px; background: var(--lab-elev); }
 .labkom-progress > div > span { display: block; height: 100%; max-width: 100%; border-radius: 99px; background: var(--lab-yellow); box-shadow: 0 0 8px rgba(255, 200, 61, .16); }
-.labkom-progress small { margin-left: auto; color: var(--lab-text-3); font: 8px "IBM Plex Mono", monospace; }
+.labkom-progress small { margin-left: auto; color: var(--lab-text-3); font: 8px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-icon-button { width: 30px; min-height: 30px; padding: 0; }
 .labkom-icon-button svg { width: 14px; height: 14px; }
 
@@ -506,7 +506,7 @@ body {
 .labkom-register-student strong,
 .labkom-register-student small { display: block; }
 .labkom-register-student strong { color: var(--lab-text); font-size: 10.5px; }
-.labkom-register-student small { margin-top: 2px; color: var(--lab-text-3); font: 8.5px "IBM Plex Mono", monospace; }
+.labkom-register-student small { margin-top: 2px; color: var(--lab-text-3); font: 8.5px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-register-detail { overflow-y: auto; border-left: 1px solid var(--lab-line); background: var(--lab-panel); }
 .labkom-register-profile { min-height: 68px; display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--lab-line); }
 .labkom-register-profile > b { width: 38px; height: 38px; display: grid; place-items: center; flex: 0 0 38px; border-radius: 10px; background: rgba(255, 107, 107, .1); color: #ff9b9b; font-size: 11px; }
@@ -514,7 +514,7 @@ body {
 .labkom-register-profile strong,
 .labkom-register-profile small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .labkom-register-profile strong { color: var(--lab-text); font-size: 12px; }
-.labkom-register-profile small { margin-top: 3px; color: var(--lab-text-3); font: 8.5px "IBM Plex Mono", monospace; }
+.labkom-register-profile small { margin-top: 3px; color: var(--lab-text-3); font: 8.5px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-register-profile em { padding: 5px 7px; border-radius: 6px; background: rgba(63, 208, 138, .1); color: var(--lab-green); font-size: 8.5px; font-style: normal; font-weight: 700; }
 .labkom-register-profile em.is-issue { background: rgba(255, 107, 107, .12); color: var(--lab-red); }
 .labkom-detail-kicker { margin: 0; padding: 13px 14px 8px; color: var(--lab-text-3); font-size: 8.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
@@ -547,7 +547,7 @@ body {
 .labkom-report-stats strong,
 .labkom-report-stats small { display: block; }
 .labkom-report-stats span { color: var(--lab-text-2); font-size: 9px; }
-.labkom-report-stats strong { margin-top: 8px; color: var(--lab-text); font: 700 22px/1 "IBM Plex Mono", monospace; }
+.labkom-report-stats strong { margin-top: 8px; color: var(--lab-text); font: 700 22px/1 "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-report-stats strong.is-yellow { color: var(--lab-yellow); }
 .labkom-report-stats strong.is-red { color: var(--lab-red); }
 .labkom-report-stats small { margin-top: 8px; color: var(--lab-text-3); font-size: 8.5px; }
@@ -563,7 +563,7 @@ body {
 .labkom-report-bars progress { width: 100%; height: 6px; border: 0; border-radius: 99px; overflow: hidden; background: var(--lab-elev); accent-color: var(--lab-yellow); }
 .labkom-report-bars progress::-webkit-progress-bar { background: var(--lab-elev); }
 .labkom-report-bars progress::-webkit-progress-value { border-radius: 99px; background: var(--lab-yellow); }
-.labkom-report-bars strong { color: var(--lab-text); font: 8.5px "IBM Plex Mono", monospace; text-align: right; }
+.labkom-report-bars strong { color: var(--lab-text); font: 8.5px "JetBrains Mono Variable", Consolas, monospace; text-align: right; }
 .labkom-site-bars > div { grid-template-columns: 125px minmax(60px, 1fr) 34px; }
 .labkom-site-bars > div.is-blocked span,
 .labkom-site-bars > div.is-blocked strong { color: var(--lab-red); }
@@ -573,10 +573,10 @@ body {
 .labkom-hour-chart { height: 128px; display: grid; grid-template-columns: repeat(7, 1fr); align-items: end; gap: 8px; padding-top: 8px; }
 .labkom-hour-chart > div { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 7px; }
 .labkom-hour-chart span { width: 100%; min-height: 8px; border-radius: 7px 7px 2px 2px; background: var(--lab-yellow); opacity: .88; }
-.labkom-hour-chart small { color: var(--lab-text-3); font: 8px "IBM Plex Mono", monospace; }
+.labkom-hour-chart small { color: var(--lab-text-3); font: 8px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-attendance-summary { display: grid; grid-template-columns: 120px 1fr; align-items: center; gap: 18px; }
 .labkom-attendance-summary > div { display: flex; flex-direction: column; align-items: center; justify-content: center; aspect-ratio: 1; border: 12px solid var(--lab-yellow); border-radius: 50%; background: var(--lab-screen); }
-.labkom-attendance-summary > div strong { color: var(--lab-text); font: 700 20px "IBM Plex Mono", monospace; }
+.labkom-attendance-summary > div strong { color: var(--lab-text); font: 700 20px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-attendance-summary > div strong small { color: var(--lab-text-3); font-size: 10px; }
 .labkom-attendance-summary > div span { color: var(--lab-text-3); font-size: 9px; }
 .labkom-attendance-summary ul { margin: 0; padding: 0; list-style: none; }
@@ -784,7 +784,7 @@ textarea:focus-visible {
 .labkom-connection strong,
 .labkom-connection span { display: block; }
 .labkom-connection strong { color: var(--lab-text); font-size: 10.5px; }
-.labkom-connection span { margin-top: 2px; color: var(--lab-text-3); font: 8.5px "IBM Plex Mono", monospace; }
+.labkom-connection span { margin-top: 2px; color: var(--lab-text-3); font: 8.5px "JetBrains Mono Variable", Consolas, monospace; }
 
 .labkom-header-actions { gap: 7px; }
 
@@ -816,7 +816,7 @@ textarea:focus-visible {
 
 .labkom-timebox strong,
 .labkom-timebox span { display: block; }
-.labkom-timebox strong { color: var(--lab-text); font: 600 12px "IBM Plex Mono", monospace; }
+.labkom-timebox strong { color: var(--lab-text); font: 600 12px "JetBrains Mono Variable", Consolas, monospace; }
 .labkom-timebox span { margin-top: 3px; color: var(--lab-text-3); font-size: 9px; text-transform: uppercase; }
 
 .labkom-body {
@@ -1013,7 +1013,7 @@ textarea:focus-visible {
   overflow: hidden;
   padding: 28px;
   color: var(--lab-text);
-  font-family: "IBM Plex Sans", system-ui, sans-serif;
+  font-family: "Manrope Variable", "Segoe UI", sans-serif;
   background:
     radial-gradient(circle at 18% 15%, rgba(52, 103, 179, 0.26), transparent 32%),
     radial-gradient(circle at 82% 86%, rgba(249, 199, 79, 0.1), transparent 30%),
@@ -1073,7 +1073,7 @@ textarea:focus-visible {
 .labkom-login-logo { width: 58px; height: 58px; display: grid; place-items: center; overflow: hidden; border-radius: 16px; background: #f7f9fc; box-shadow: 0 10px 28px rgba(0, 0, 0, 0.2); }
 .labkom-login-logo img { width: 51px; height: 51px; object-fit: contain; }
 .labkom-login-brand strong { display: block; font-size: 17px; letter-spacing: 0.08em; }
-.labkom-login-brand span { display: block; margin-top: 3px; color: var(--lab-yellow); font: 9px "IBM Plex Mono", monospace; letter-spacing: 0.18em; }
+.labkom-login-brand span { display: block; margin-top: 3px; color: var(--lab-yellow); font: 9px "JetBrains Mono Variable", Consolas, monospace; letter-spacing: 0.18em; }
 
 .labkom-login-message { margin-top: 70px; max-width: 430px; }
 .labkom-login-kicker { display: inline-flex; align-items: center; gap: 8px; color: var(--lab-yellow-2); font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; }
@@ -1098,7 +1098,7 @@ textarea:focus-visible {
   background: rgba(8, 16, 29, 0.8);
 }
 
-.labkom-login-status { display: inline-flex; align-items: center; gap: 8px; color: var(--lab-green); font: 700 9px "IBM Plex Mono", monospace; letter-spacing: 0.12em; }
+.labkom-login-status { display: inline-flex; align-items: center; gap: 8px; color: var(--lab-green); font: 700 9px "JetBrains Mono Variable", Consolas, monospace; letter-spacing: 0.12em; }
 .labkom-login-status i { width: 7px; height: 7px; border-radius: 50%; background: var(--lab-green); box-shadow: 0 0 0 5px rgba(69, 214, 155, 0.09); }
 .labkom-login-card-head h2 { margin: 20px 0 0; color: #fff; font-size: 29px; letter-spacing: -0.025em; }
 .labkom-login-card-head p { margin: 9px 0 0; color: var(--lab-text-3); font-size: 12px; line-height: 1.6; }
@@ -1168,4 +1168,246 @@ textarea:focus-visible {
   .labkom-stat-grid { grid-template-columns: 1fr 1fr; }
   .labkom-login-shell { grid-template-columns: 1fr; max-width: 520px; min-height: 0; }
   .labkom-login-visual { display: none; }
+}
+
+/* Typography and interface polish v2 */
+:root {
+  --lab-bg: #060b14;
+  --lab-screen: #09111f;
+  --lab-panel: #0e192a;
+  --lab-panel-2: #132139;
+  --lab-elev: #1a2b48;
+  --lab-line: rgba(145, 170, 211, 0.14);
+  --lab-line-strong: rgba(151, 181, 229, 0.3);
+  --lab-text: #f0f4fa;
+  --lab-text-2: #a9b9d0;
+  --lab-text-3: #7487a3;
+  --lab-yellow: #f8c84f;
+  --lab-yellow-2: #ffdc7a;
+}
+
+body {
+  color: var(--lab-text);
+  font-family: "Manrope Variable", "Segoe UI", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.labkom-admin {
+  font-size: 13px;
+  font-variant-numeric: proportional-nums;
+  letter-spacing: -0.006em;
+}
+
+.labkom-admin :where(h1, h2, h3, strong, b) {
+  font-variation-settings: "wght" 700;
+}
+
+.labkom-admin :where(.font-mono, code, kbd),
+.labkom-mono,
+.labkom-pc-id,
+.labkom-timebox strong,
+.labkom-connection span {
+  font-family: "JetBrains Mono Variable", Consolas, monospace !important;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.025em;
+}
+
+.labkom-header {
+  height: 80px;
+  flex-basis: 80px;
+  padding-inline: 20px;
+  border-bottom-color: rgba(165, 190, 229, 0.13);
+  background:
+    linear-gradient(90deg, rgba(15, 30, 53, 0.78), rgba(7, 14, 27, 0.94) 42%),
+    rgba(7, 14, 27, 0.94);
+}
+
+.labkom-header::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, var(--lab-yellow), rgba(248, 200, 79, 0.08) 28%, transparent 70%);
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.labkom-brand { min-width: 222px; }
+.labkom-brand strong { font-size: 15.5px; font-weight: 750; letter-spacing: -0.035em; }
+.labkom-brand span { color: #7f91ac; font-size: 10.5px; font-weight: 500; letter-spacing: -0.015em; }
+.labkom-logo { border-radius: 15px; box-shadow: 0 10px 30px rgba(248, 200, 79, 0.18); }
+
+.labkom-context > span { font-size: 8px; font-weight: 750; letter-spacing: 0.17em; }
+.labkom-context strong { margin-top: 3px; font-size: 14.5px; letter-spacing: -0.025em; }
+.labkom-context small { font-size: 9.5px; }
+
+.labkom-connection {
+  padding: 9px 12px;
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(23, 40, 67, 0.92), rgba(13, 25, 44, 0.86));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.labkom-connection strong { font-size: 10.5px; font-weight: 700; }
+.labkom-connection span { margin-top: 3px; font-size: 8px; }
+
+.labkom-action {
+  min-height: 42px;
+  padding-inline: 13px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(23, 40, 67, 0.84), rgba(14, 27, 48, 0.8));
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+.labkom-timebox strong { font-size: 11.5px; font-weight: 650; letter-spacing: -0.04em; }
+.labkom-timebox span { font-size: 8.5px; font-weight: 650; letter-spacing: 0.08em; }
+
+.labkom-rail {
+  width: 134px;
+  flex-basis: 134px;
+  padding: 14px 10px;
+  background: linear-gradient(180deg, rgba(10, 20, 37, 0.98), rgba(7, 14, 27, 0.94));
+}
+
+.labkom-rail-items { gap: 5px; }
+.labkom-rail-button {
+  min-height: 48px;
+  gap: 10px;
+  padding-inline: 11px;
+  border-radius: 12px;
+  font-size: 10.75px;
+  font-weight: 600;
+  letter-spacing: -0.012em;
+}
+
+.labkom-rail-button svg { width: 18px; height: 18px; flex-basis: 18px; stroke-width: 1.8; }
+.labkom-rail-button.is-active {
+  border-color: rgba(248, 200, 79, 0.2);
+  background: linear-gradient(100deg, rgba(248, 200, 79, 0.19), rgba(248, 200, 79, 0.055));
+  box-shadow: inset 3px 0 0 var(--lab-yellow), 0 8px 22px rgba(0, 0, 0, 0.13);
+}
+
+.labkom-workspace {
+  margin: 14px;
+  border-radius: 18px;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.018);
+}
+
+.labkom-monitor { grid-template-columns: minmax(0, 1fr) 326px; }
+.labkom-monitor-main { padding: 17px 17px 24px; }
+.labkom-filterbar { gap: 9px; padding-bottom: 16px; }
+.labkom-search {
+  width: min(320px, 36vw);
+  height: 41px;
+  padding-inline: 13px;
+  border-radius: 12px;
+  background: linear-gradient(145deg, rgba(20, 35, 59, 0.98), rgba(16, 29, 50, 0.92));
+}
+.labkom-search input { font-size: 11.5px; font-weight: 500; letter-spacing: -0.015em; }
+.labkom-chip { height: 39px; border-radius: 11px; font-size: 10.5px; font-weight: 650; }
+.labkom-filter-actions .labkom-icon-button { width: 39px; min-height: 39px !important; border-radius: 11px; }
+
+.labkom-pc-grid { grid-template-columns: repeat(auto-fill, minmax(154px, 1fr)); gap: 13px; }
+.labkom-pc-card {
+  position: relative;
+  border-color: rgba(145, 170, 211, 0.15);
+  border-radius: 15px;
+  background: linear-gradient(155deg, rgba(20, 35, 59, 0.98), rgba(12, 23, 41, 0.99));
+  box-shadow: 0 9px 24px rgba(0, 0, 0, 0.17), inset 0 1px 0 rgba(255, 255, 255, 0.018);
+}
+
+.labkom-pc-card::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 18px;
+  left: 18px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(90, 162, 255, 0.55), transparent);
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.labkom-pc-card.is-offline::before { background: linear-gradient(90deg, transparent, rgba(116, 135, 163, 0.45), transparent); }
+.labkom-pc-card:hover { transform: translateY(-4px); border-color: rgba(105, 169, 255, 0.38); box-shadow: 0 16px 36px rgba(0, 0, 0, 0.29); }
+.labkom-pc-card.is-selected { border-color: var(--lab-yellow); box-shadow: 0 0 0 3px rgba(248, 200, 79, 0.11), 0 18px 38px rgba(0, 0, 0, 0.28); }
+.labkom-pc-preview { background: radial-gradient(circle at 50% 50%, rgba(35, 56, 90, 0.32), transparent 55%), linear-gradient(145deg, #070e1a, #0a1425); }
+.labkom-pc-empty { color: #7e90aa; font-size: 9.5px; font-weight: 500; }
+.labkom-pc-empty svg { width: 29px; height: 29px; stroke-width: 1.6; }
+.labkom-pc-meta { padding: 11px 12px 12px; }
+.labkom-pc-title strong { font-size: 11.75px; font-weight: 700; letter-spacing: -0.025em; }
+.labkom-pc-id { margin-top: 6px; font-size: 8.5px; }
+
+.labkom-overview { background: linear-gradient(180deg, rgba(14, 25, 43, 0.99), rgba(8, 17, 31, 0.99)); }
+.labkom-panel-head { padding: 18px 17px; }
+.labkom-panel-head h2 { font-size: 15.5px; letter-spacing: -0.03em; }
+.labkom-panel-head p { font-size: 10px; font-weight: 500; }
+.labkom-badge { border: 1px solid rgba(69, 214, 155, 0.12); border-radius: 999px; font-size: 8.75px; font-weight: 700; }
+.labkom-stat-grid { gap: 10px; padding: 16px 17px; }
+.labkom-stat { padding: 14px; border-radius: 13px; background: linear-gradient(145deg, rgba(22, 39, 65, 0.98), rgba(17, 31, 53, 0.84)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.022); }
+.labkom-stat strong { font-size: 21px; letter-spacing: -0.06em; }
+.labkom-stat span { font-size: 9.5px; font-weight: 600; }
+.labkom-panel-section { margin-inline: 17px; border-radius: 13px; }
+.labkom-panel-section > header { font-size: 11px; font-weight: 700; }
+.labkom-feed-copy strong { font-size: 11px; font-weight: 700; letter-spacing: -0.02em; }
+.labkom-feed-copy span { font-size: 8.5px; }
+
+.labkom-page-heading { min-height: 72px; padding-inline: 20px; }
+.labkom-page-heading h2 { font-size: 17px; letter-spacing: -0.035em; }
+.labkom-page-heading p { font-size: 10.5px; font-weight: 500; }
+.labkom-primary { min-height: 41px; border-radius: 11px; font-size: 11.5px; font-weight: 700; }
+.labkom-segmented button { min-height: 37px; font-weight: 650; }
+.labkom-data-table { font-size: 11.5px; }
+.labkom-data-table th { height: 41px; font-size: 8.75px; font-weight: 750; letter-spacing: 0.075em; }
+.labkom-data-table td { height: 56px; }
+.labkom-status { border-radius: 999px; font-size: 9px; font-weight: 700; }
+
+.labkom-legacy-surface :where(h1, h2, h3) { letter-spacing: -0.035em; }
+.labkom-legacy-surface :where(.rounded-xl, .rounded-2xl) { border-color: rgba(145, 170, 211, 0.15) !important; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.016); }
+.labkom-legacy-surface :where(button) { font-weight: 650; letter-spacing: -0.015em; }
+
+.labkom-login-shell { border-radius: 30px; box-shadow: 0 40px 120px rgba(0, 0, 0, 0.5); }
+.labkom-login-brand strong { font-size: 18px; font-weight: 750; letter-spacing: 0.035em; }
+.labkom-login-message h1 { font-weight: 750; letter-spacing: -0.055em; }
+.labkom-login-message p { font-size: 13.25px; font-weight: 450; }
+.labkom-login-features strong { font-size: 11.25px; font-weight: 700; }
+.labkom-login-features small { font-size: 9.75px; }
+.labkom-login-card-head h2 { font-size: 30px; font-weight: 750; letter-spacing: -0.05em; }
+.labkom-login-field > span { font-size: 11.25px; font-weight: 650; }
+.labkom-login-field input { font-size: 12.25px; font-weight: 500; }
+.labkom-login-submit { font-size: 12.25px; font-weight: 750; letter-spacing: -0.015em; }
+
+@media (max-width: 1380px) {
+  .labkom-brand { min-width: 198px; }
+  .labkom-rail { width: 128px; flex-basis: 128px; }
+  .labkom-monitor { grid-template-columns: minmax(0, 1fr) 306px; }
+}
+
+@media (max-width: 1200px) {
+  .labkom-brand { min-width: 52px; }
+  .labkom-monitor { grid-template-columns: minmax(0, 1fr) 288px; }
+  .labkom-pc-grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+}
+
+@media (max-width: 980px) {
+  .labkom-rail { width: 78px; flex-basis: 78px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .labkom-admin *,
+  .labkom-login * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
