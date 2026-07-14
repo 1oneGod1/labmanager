@@ -42,12 +42,14 @@ Untuk menjalankan ulang secara manual, buka Actions > Release LabKom Apps > Run 
 - Opsi per-PC: alamat server, mulai bersama Windows, update otomatis, dan notifikasi update.
 - Jika update otomatis aktif, paket diunduh di belakang layar.
 - Setelah selesai, siswa mendapat notifikasi dan dapat memasang saat itu juga; jika tidak, update dipasang saat aplikasi ditutup.
+- Untuk kondisi mendesak, tekan `Ctrl+Alt+Q`, lalu masukkan password keluar darurat `labkom123`.
 
 ### Admin
 
 - Memeriksa update setelah aplikasi dimulai.
 - Menampilkan status versi baru di dashboard.
 - Download dan restart tetap dikonfirmasi oleh Kepala Lab.
+- Password admin bawaan adalah `kepalalab123`. Nilainya disimpan sebagai hash bcrypt pada konfigurasi produksi.
 
 ## Build lokal
 
@@ -70,7 +72,7 @@ Hasil build berada pada `client/dist-electron` dan `admin/dist-electron`.
 
 - Jangan commit `.env`, service account Firebase, token GitHub, atau kunci pairing.
 - Simpan service account di luar repository dan isi path absolut pada `%APPDATA%\LabKom Admin - Dashboard\server.env`.
-- Isi `ADMIN_PASSWORD` dengan hash bcrypt.
+- `ADMIN_PASSWORD` wajib berupa hash bcrypt. Installer ini mengisinya untuk password awal `kepalalab123` dan memigrasikan instalasi lama satu kali.
 - Gunakan `CLIENT_REGISTRATION_KEY` acak minimal 32 karakter dan nilai yang sama pada environment PC siswa.
 - GitHub Actions memakai `GITHUB_TOKEN` bawaan workflow; tidak perlu menulis personal access token ke file.
 

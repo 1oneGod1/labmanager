@@ -10,13 +10,16 @@ const {
 const { checkAllowed, registerFailure, clearFailures } = require('../services/adminRateLimitService');
 const { logAdminAction } = require('../services/adminAuditService');
 
+// Hash bcrypt untuk password admin awal pada instalasi baru.
+const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$10$x7A71CHObExmQ7nqG0/pduYE1ye3TjjQqeMGa5qtWsA9q.ALnu6Te';
+
 function getRequestIp(req) {
   // Express tidak dikonfigurasi trust proxy; jangan percaya X-Forwarded-For dari client.
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
 function readAdminPassword() {
-  return process.env.ADMIN_PASSWORD;
+  return process.env.ADMIN_PASSWORD || DEFAULT_ADMIN_PASSWORD_HASH;
 }
 
 /**
@@ -184,4 +187,14 @@ function revokeDeviceClaim(req, res) {
   res.json({ success: true, message: `Claim untuk ${pc_name} telah dihapus. Device akan otomatis register ulang.` });
 }
 
-module.exports = { verifyPassword, login, me, logout, refreshToken, listDeviceClaims, revokeDeviceClaim };
+module.exports = {
+  verifyPassword,
+  login,
+  me,
+  logout,
+  refreshToken,
+  listDeviceClaims,
+  revokeDeviceClaim,
+  compareAdminPassword,
+  DEFAULT_ADMIN_PASSWORD_HASH,
+};

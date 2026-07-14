@@ -10,6 +10,7 @@ const crypto          = require('crypto');
 const { execSync, spawn } = require('child_process');
 const { io }          = require('socket.io-client');
 const ActivityMonitor = require('./activityMonitor');
+const { verifyEmergencyPassword } = require('./emergencyPassword');
 
 // Semua HTTP renderer sudah lewat IPC apiRequest (file:// → main process Node.js http),
 // jadi flag disable-web-security tidak diperlukan. Socket.io WebSocket dari file:// ke
@@ -942,15 +943,8 @@ ipcMain.handle('get-client-token', async () => {
 });
 
 // ── IPC: Verifikasi emergency password (offline exit) ────────────────────────────────
-// Password disimpan di main process supaya tidak ter-bundle di JS renderer.
-// Bisa di-override via env LABKOM_EMERGENCY_PASSWORD saat build/install.
-const EMERGENCY_PASSWORD = process.env.LABKOM_EMERGENCY_PASSWORD || null;
 ipcMain.handle('verify-emergency-password', (_event, password) => {
-  if (!EMERGENCY_PASSWORD || typeof password !== 'string' || !password) return false;
-  // Constant-time compare biar tidak bocor via timing
-  const a = Buffer.from(password);
-  const b = Buffer.from(EMERGENCY_PASSWORD);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  return verifyEmergencyPassword(password);
 });
 
 // ── IPC: Baca / Simpan konfigurasi URL server ────────────────────

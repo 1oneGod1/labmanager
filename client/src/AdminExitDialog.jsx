@@ -5,7 +5,7 @@ import { apiCall } from './api.js';
 const SERVER_URL = sessionStorage.getItem('server_url') || 'http://localhost:3001';
 
 /**
- * Dialog untuk Kepala Lab agar bisa keluar dari aplikasi kiosk.
+ * Dialog keluar darurat dari aplikasi kiosk.
  * Dipanggil dengan shortcut Ctrl+Alt+Q atau klik 5x di pojok kiri bawah layar login.
  */
 export default function AdminExitDialog({ onClose }) {
@@ -44,7 +44,7 @@ export default function AdminExitDialog({ onClose }) {
     setIsLoading(true);
     setError('');
 
-    // Cek password lokal (verifikasi di main process; plaintext tidak ada di bundle)
+    // Cek password darurat lokal melalui main process.
     const isLocalMatch = await window.electronAPI?.verifyEmergencyPassword?.(password);
     if (isLocalMatch) {
       await doExit();
@@ -67,7 +67,7 @@ export default function AdminExitDialog({ onClose }) {
         inputRef.current?.focus();
       }
     } catch {
-      setError('Server tidak dapat dijangkau. Gunakan password emergency yang dikonfigurasi pada PC ini.');
+      setError('Server tidak dapat dijangkau. Gunakan password keluar darurat PC siswa.');
       setPassword('');
       inputRef.current?.focus();
     } finally {
@@ -84,8 +84,8 @@ export default function AdminExitDialog({ onClose }) {
               <ShieldCheck className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <h2 className="text-white font-bold text-sm">Akses Kepala Lab</h2>
-              <p className="text-slate-400 text-xs">Masukkan password untuk keluar</p>
+              <h2 className="text-white font-bold text-sm">Keluar Darurat</h2>
+              <p className="text-slate-400 text-xs">Hanya untuk kondisi mendesak</p>
             </div>
           </div>
           <button
@@ -105,7 +105,7 @@ export default function AdminExitDialog({ onClose }) {
           )}
 
           <div className="space-y-1.5">
-            <label className="text-xs font-medium text-slate-400">Password Kepala Lab</label>
+            <label className="text-xs font-medium text-slate-400">Password keluar darurat</label>
             <div className="relative">
               <input
                 ref={inputRef}

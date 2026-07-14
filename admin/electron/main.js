@@ -13,6 +13,30 @@ const dgram            = require('dgram');
 const { spawn }        = require('child_process');
 const fs               = require('fs');
 
+const DEFAULT_ADMIN_PASSWORD_HASH = '$2b$10$x7A71CHObExmQ7nqG0/pduYE1ye3TjjQqeMGa5qtWsA9q.ALnu6Te';
+const ADMIN_PASSWORD_POLICY_VERSION = '2026-07-14-1';
+
+function upsertEnvValue(content, key, value) {
+  const line = `${key}=${value}`;
+  const matcher = new RegExp(`^${key}=.*$`, 'm');
+  if (matcher.test(content)) return content.replace(matcher, () => line);
+  const normalized = content.trimEnd();
+  return `${normalized}${normalized ? '\r\n' : ''}${line}\r\n`;
+}
+
+function applyAdminPasswordPolicy(envPath) {
+  let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  const currentPolicy = content
+    .match(/^LABKOM_ADMIN_PASSWORD_POLICY_VERSION=(.*)$/m)?.[1]
+    ?.trim();
+  if (currentPolicy === ADMIN_PASSWORD_POLICY_VERSION) return false;
+
+  content = upsertEnvValue(content, 'ADMIN_PASSWORD', DEFAULT_ADMIN_PASSWORD_HASH);
+  content = upsertEnvValue(content, 'LABKOM_ADMIN_PASSWORD_POLICY_VERSION', ADMIN_PASSWORD_POLICY_VERSION);
+  fs.writeFileSync(envPath, content, 'utf8');
+  return true;
+}
+
 // ─── UDP Discovery Broadcast ────────────────────────────────────────────────
 const DISCOVERY_PORT    = 41234;
 const DISCOVERY_MESSAGE = Buffer.from(JSON.stringify({
@@ -259,6 +283,9 @@ async function startServer() {
     if (fs.existsSync(examplePath)) fs.copyFileSync(examplePath, managedEnvPath);
     log.warn('[SERVER] Konfigurasi dibuat di:', managedEnvPath);
   }
+  if (!isDev && applyAdminPasswordPolicy(managedEnvPath)) {
+    log.info('[SERVER] Password admin bawaan berhasil dimigrasikan.');
+  }
   console.log('[ADMIN] Menjalankan server:', serverEntry, '| node:', nodeExe);
 
   serverStopRequested = false;
@@ -267,6 +294,9 @@ async function startServer() {
     NODE_ENV: 'production',
     LABKOM_ENV_PATH: managedEnvPath,
   };
+  // server.env adalah sumber konfigurasi admin yang otoritatif. Hindari nilai
+  // ADMIN_PASSWORD dari shell induk mengalahkan hasil migrasi dotenv.
+  delete serverEnv.ADMIN_PASSWORD;
   if (!isDev) serverEnv.ELECTRON_RUN_AS_NODE = '1';
 
   const managedProcess = spawn(nodeExe, [serverEntry], {
