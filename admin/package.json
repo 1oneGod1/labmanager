@@ -35,6 +35,7 @@
   "build": {
     "appId": "com.labkom.admin",
     "productName": "LabKom Admin - Dashboard",
+    "artifactName": "LabKom-Admin-Dashboard-Setup-${version}.${ext}",
     "asar": true,
     "files": [
       "dist/**/*",

@@ -35,6 +35,7 @@
   "build": {
     "appId": "com.labkom.client",
     "productName": "LabKom Siswa",
+    "artifactName": "LabKom-Siswa-Setup-${version}.${ext}",
     "asar": true,
     "directories": {
       "output": "dist-electron"
