@@ -79,11 +79,9 @@ jobs:
         working-directory: client
         run: npm version "$env:RELEASE_VERSION" --no-git-tag-version
 
-      - name: Build and publish Student app
+      - name: Build Student app
         working-directory: client
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run electron:build -- --publish always
+        run: npm run electron:build -- --publish never
 
       - name: Install admin dependencies
         working-directory: admin
@@ -93,11 +91,36 @@ jobs:
         working-directory: admin
         run: npm version "$env:RELEASE_VERSION" --no-git-tag-version
 
-      - name: Build and publish Admin app
+      - name: Build Admin app
         working-directory: admin
+        run: npm run electron:build -- --publish never
+
+      - name: Publish complete GitHub Release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run electron:build -- --publish always
+        run: |
+          $tag = "v$env:RELEASE_VERSION"
+          gh release view $tag --repo '${{ github.repository }}' *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag `
+              --repo '${{ github.repository }}' `
+              --verify-tag `
+              --draft `
+              --title $env:RELEASE_VERSION `
+              --notes "Rilis otomatis LabKom Admin dan Siswa."
+          }
+
+          $assets = @(
+            Get-ChildItem 'client/dist-electron' -File | Where-Object { $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' -or $_.Name -eq 'client.yml' }
+            Get-ChildItem 'admin/dist-electron' -File | Where-Object { $_.Extension -eq '.exe' -or $_.Name -like '*.exe.blockmap' -or $_.Name -eq 'admin.yml' }
+          )
+          if ($assets.Count -ne 6) {
+            throw "Aset rilis tidak lengkap: ditemukan $($assets.Count), seharusnya 6."
+          }
+
+          gh release upload $tag @($assets.FullName) --repo '${{ github.repository }}' --clobber
+          gh release edit $tag --repo '${{ github.repository }}' --draft=false --latest
 
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v4
