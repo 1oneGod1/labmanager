@@ -48,8 +48,9 @@ app.disable('x-powered-by');
 // =====================
 // Middleware
 // =====================
-// CORS: Hanya izinkan localhost, LAN (192.168.x.x, 10.x.x.x), dan Electron (null origin)
+// CORS: Hanya izinkan localhost, LAN, dan origin internal Electron.
 const ALLOWED_ORIGIN_PATTERNS = [
+  /^labkom:\/\/app$/,
   /^http:\/\/localhost(:\d+)?$/,
   /^http:\/\/127\.0\.0\.1(:\d+)?$/,
   /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
@@ -58,7 +59,7 @@ const ALLOWED_ORIGIN_PATTERNS = [
 ];
 app.use(cors({
   origin: (origin, callback) => {
-    // null origin = Electron file:// protocol atau same-origin
+    // Tanpa origin digunakan request same-origin/non-browser yang sah.
     if (!origin) return callback(null, true);
     if (ALLOWED_ORIGIN_PATTERNS.some(p => p.test(origin))) return callback(null, true);
     console.warn(`[CORS] Blocked origin: ${origin}`);

@@ -1,6 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, X, Eye, EyeOff, LogOut, AlertCircle } from 'lucide-react';
-import { apiCall } from './api.js';
+import { apiCall, settleWithin } from './api.js';
 
 const SERVER_URL = sessionStorage.getItem('server_url') || 'http://localhost:3001';
 
@@ -30,6 +30,7 @@ export default function AdminExitDialog({ onClose }) {
     if (sessionId) {
       await apiCall(`${SERVER_URL}/api/auth/logout`, {
         method: 'POST',
+        timeoutMs: 2_000,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       }).catch(() => {});
@@ -45,7 +46,11 @@ export default function AdminExitDialog({ onClose }) {
     setError('');
 
     // Cek password darurat lokal melalui main process.
-    const isLocalMatch = await window.electronAPI?.verifyEmergencyPassword?.(password);
+    const isLocalMatch = await settleWithin(
+      window.electronAPI?.verifyEmergencyPassword?.(password),
+      3_000,
+      false,
+    );
     if (isLocalMatch) {
       await doExit();
       return;
@@ -55,6 +60,7 @@ export default function AdminExitDialog({ onClose }) {
     try {
       const result = await apiCall(`${SERVER_URL}/api/admin/verify-password`, {
         method: 'POST',
+        timeoutMs: 6_000,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });

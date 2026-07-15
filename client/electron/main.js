@@ -1,6 +1,7 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification, safeStorage, session } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification, safeStorage, session, protocol, net: electronNet } = require('electron');
 const os              = require('os');
 const path            = require('path');
+const { pathToFileURL } = require('url');
 const fs              = require('fs');
 const http            = require('http');
 const https           = require('https');
@@ -11,6 +12,18 @@ const { execSync, spawn } = require('child_process');
 const { io }          = require('socket.io-client');
 const ActivityMonitor = require('./activityMonitor');
 const { verifyEmergencyPassword } = require('./emergencyPassword');
+const { createDeepFreezeManager } = require('./deepFreezeManager');
+
+const RENDERER_SCHEME = 'labkom';
+protocol.registerSchemesAsPrivileged([{
+  scheme: RENDERER_SCHEME,
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+  },
+}]);
 
 // Semua HTTP renderer sudah lewat IPC apiRequest (file:// → main process Node.js http),
 // jadi flag disable-web-security tidak diperlukan. Socket.io WebSocket dari file:// ke
@@ -60,10 +73,44 @@ const log             = require('electron-log');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const allowDevTools = process.env.OPEN_ELECTRON_DEVTOOLS === '1';
+function registerRendererProtocol() {
+  const rendererRoot = path.resolve(app.getAppPath(), 'dist');
+  const normalizedRoot = rendererRoot.toLowerCase();
+  const rootPrefix = `${normalizedRoot}${path.sep}`;
+
+  protocol.handle(RENDERER_SCHEME, (request) => {
+    try {
+      const requestUrl = new URL(request.url);
+      if (requestUrl.host !== 'app') {
+        return new Response('Not found', { status: 404 });
+      }
+
+      const relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '') || 'index.html';
+      const resolvedPath = path.resolve(rendererRoot, relativePath);
+      const normalizedPath = resolvedPath.toLowerCase();
+      if (normalizedPath !== normalizedRoot && !normalizedPath.startsWith(rootPrefix)) {
+        log.warn(`[RENDERER PROTOCOL] Path ditolak: ${requestUrl.pathname}`);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      return electronNet.fetch(pathToFileURL(resolvedPath).toString());
+    } catch (error) {
+      log.error('[RENDERER PROTOCOL] Gagal melayani asset:', error);
+      return new Response('Internal error', { status: 500 });
+    }
+  });
+}
+
 let allowAppQuit = false;
 let realtimeSocket = null;
+let realtimeRetryTimer = null;
+let realtimeTargetUrl = null;
 let presenceHeartbeatTimer = null;
 let latestControlPolicy = null;
+let deepFreezeManager = null;
+let deepFreezeOperation = null;
+let latestDeepFreezeStatus = null;
+const executedDeepFreezeCommandIds = new Set();
 let policyProxyServer = null;
 let policyProxyPort = null;
 const recentlyReportedBlockedHosts = new Map();
@@ -390,13 +437,36 @@ async function ensureClientToken(serverUrl) {
   if (stored) return stored;
   return await requestDeviceToken(serverUrl);
 }
+let clientTokenRefreshPromise = null;
+async function refreshClientToken(serverUrl) {
+  if (!serverUrl) return null;
+  if (!clientTokenRefreshPromise) {
+    setStoredClientToken(null);
+    clientTokenRefreshPromise = requestDeviceToken(serverUrl)
+      .finally(() => { clientTokenRefreshPromise = null; });
+  }
+  return await clientTokenRefreshPromise;
+}
+
 
 let mainWindow;
 let focusRecoveryTimer = null;
 let aggressiveFocusInterval = null;
 let screenShareTimer   = null;
 let screenCaptureInFlight = false;
-let lockModeEnabled = true;
+let lockModeEnabled = false;
+let rendererReady = false;
+let rendererReadyProbeInFlight = false;
+let rendererSafetyGeneration = 0;
+let rendererStartupTimer = null;
+let rendererRecoveryTimer = null;
+let rendererStartupAttempts = 0;
+let rendererHealthTimer = null;
+let rendererVisualScreen = null;
+let lastRendererHealthAt = 0;
+const RENDERER_STARTUP_TIMEOUT_MS = 12_000;
+const RENDERER_HEALTH_TIMEOUT_MS = 9_000;
+let shortcutsRegistered = false;
 
 // ── Windows Keyboard Hook (blokir Alt+Tab di level OS) ────────────────────────────────
 let kbHookProcess = null;
@@ -636,6 +706,7 @@ function isKioskLocked() {
 
 function keepWindowVisible() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (!rendererReady || allowAppQuit) return;
 
   try {
     // Set always on top dengan level tertinggi
@@ -692,6 +763,12 @@ function preventUnexpectedQuit(event) {
 
 function requestControlledQuit(reason) {
   allowAppQuit = true;
+  stopRendererHealthMonitor();
+  clearRendererStartupWatchdog();
+  if (rendererRecoveryTimer) {
+    clearTimeout(rendererRecoveryTimer);
+    rendererRecoveryTimer = null;
+  }
   log.info(`[APP] Controlled quit: ${reason}`);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.setClosable(true);
@@ -701,6 +778,7 @@ function requestControlledQuit(reason) {
   stopKeyboardHook();
   showTaskbar(); // Selalu pulihkan taskbar saat quit
   globalShortcut.unregisterAll();
+  shortcutsRegistered = false;
   Promise.race([
     restoreSystemProxy().catch(() => false),
     new Promise((resolve) => setTimeout(resolve, 2500)),
@@ -737,6 +815,154 @@ function stopAggressiveFocusLoop() {
   log.info('[KIOSK] Aggressive focus loop dihentikan');
 }
 
+function stopRendererHealthMonitor() {
+  if (!rendererHealthTimer) return;
+  clearInterval(rendererHealthTimer);
+  rendererHealthTimer = null;
+}
+
+function startRendererHealthMonitor() {
+  if (rendererHealthTimer) return;
+  rendererHealthTimer = setInterval(() => {
+    if (
+      !rendererReady
+      || allowAppQuit
+      || !isKioskLocked()
+      || !['login', 'setup'].includes(rendererVisualScreen)
+    ) return;
+
+    const silentForMs = Date.now() - lastRendererHealthAt;
+    if (silentForMs <= RENDERER_HEALTH_TIMEOUT_MS) return;
+
+    log.error(`[RENDERER] Heartbeat visual hilang selama ${silentForMs}ms; kiosk dilepas untuk pemulihan.`);
+    scheduleRendererRecovery('renderer-visual-heartbeat-timeout', 0);
+  }, 2_000);
+  rendererHealthTimer.unref?.();
+}
+
+function clearRendererStartupWatchdog() {
+  if (!rendererStartupTimer) return;
+  clearTimeout(rendererStartupTimer);
+  rendererStartupTimer = null;
+}
+
+function releaseRendererLockForRecovery(reason) {
+  lockModeEnabled = false;
+  rendererSafetyGeneration += 1;
+  rendererVisualScreen = null;
+  stopRendererHealthMonitor();
+  if (focusRecoveryTimer) {
+    clearTimeout(focusRecoveryTimer);
+    focusRecoveryTimer = null;
+  }
+  stopAggressiveFocusLoop();
+  stopKeyboardHook();
+  showTaskbar();
+  globalShortcut.unregisterAll();
+  shortcutsRegistered = false;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      mainWindow.setKiosk(false);
+      mainWindow.setFullScreen(false);
+      mainWindow.hide();
+    } catch {}
+  }
+  log.warn(`[RENDERER] Proteksi kiosk dilepas sementara: ${reason}`);
+}
+
+function failRendererStartup(reason) {
+  if (allowAppQuit) return;
+  clearRendererStartupWatchdog();
+  releaseRendererLockForRecovery(reason);
+  log.error(`[RENDERER] Startup gagal setelah percobaan pemulihan: ${reason}`);
+  dialog.showErrorBox(
+    'LabKom Siswa gagal dimuat',
+    'Tampilan aplikasi tidak merespons. Aplikasi akan ditutup dengan aman agar komputer tidak terkunci. Silakan jalankan kembali atau hubungi pengelola lab.',
+  );
+  requestControlledQuit('renderer-startup-failed');
+}
+
+function armRendererStartupWatchdog() {
+  clearRendererStartupWatchdog();
+  if (rendererReady || allowAppQuit) return;
+
+  rendererStartupTimer = setTimeout(() => {
+    rendererStartupTimer = null;
+    if (rendererReady || allowAppQuit || !mainWindow || mainWindow.isDestroyed()) return;
+
+    if (rendererStartupAttempts < 1) {
+      rendererStartupAttempts += 1;
+      releaseRendererLockForRecovery('startup-timeout');
+      log.warn('[RENDERER] Belum siap dalam 12 detik; memuat ulang satu kali.');
+      try {
+        mainWindow.webContents.reloadIgnoringCache();
+        armRendererStartupWatchdog();
+      } catch (error) {
+        failRendererStartup(`reload-gagal: ${error.message}`);
+      }
+      return;
+    }
+
+    failRendererStartup('startup-timeout-setelah-reload');
+  }, RENDERER_STARTUP_TIMEOUT_MS);
+}
+
+function scheduleRendererRecovery(reason, delay = 1000) {
+  if (allowAppQuit || rendererRecoveryTimer) return;
+
+  rendererReady = false;
+  rendererStartupAttempts = 0;
+  clearRendererStartupWatchdog();
+  releaseRendererLockForRecovery(reason);
+
+  rendererRecoveryTimer = setTimeout(() => {
+    rendererRecoveryTimer = null;
+    if (allowAppQuit || !mainWindow || mainWindow.isDestroyed()) return;
+    log.warn(`[RENDERER] Memuat ulang setelah ${reason}.`);
+    try {
+      mainWindow.webContents.reloadIgnoringCache();
+      armRendererStartupWatchdog();
+    } catch (error) {
+      failRendererStartup(`recovery-gagal: ${error.message}`);
+    }
+  }, delay);
+}
+
+
+function registerAppShortcuts() {
+  if (shortcutsRegistered || allowAppQuit || !rendererReady) return;
+  shortcutsRegistered = true;
+
+  globalShortcut.register('Ctrl+Alt+Q', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('show-admin-dialog');
+    }
+  });
+
+  globalShortcut.register('Alt+F4', () => {});
+  globalShortcut.register('Ctrl+W', () => {});
+  globalShortcut.register('Ctrl+F4', () => {});
+  globalShortcut.register('Ctrl+Shift+Escape', () => {});
+  globalShortcut.register('Ctrl+Alt+Delete', () => {});
+  globalShortcut.register('Ctrl+Esc', () => {});
+  globalShortcut.register('Alt+Esc', () => {});
+  globalShortcut.register('Alt+Tab', () => {});
+  globalShortcut.register('Alt+Space', () => {});
+  globalShortcut.register('Meta+Tab', () => {});
+  globalShortcut.register('Meta+D', () => {});
+  globalShortcut.register('F11', () => {});
+  globalShortcut.register('F4', () => {});
+
+  if (!isDev) {
+    globalShortcut.register('F12', () => {});
+    globalShortcut.register('Ctrl+Shift+I', () => {});
+    globalShortcut.register('Ctrl+Shift+J', () => {});
+    globalShortcut.register('Ctrl+R', () => {});
+    globalShortcut.register('F5', () => {});
+  }
+}
+
 let currentLayoutMode = 'login';
 let attentionModeOn = false;
 let preAttentionLayoutMode = null;
@@ -750,6 +976,7 @@ function applyWindowLayout(mode = 'regular') {
   mainWindow.setResizable(true);
 
   if (isLoginLayout) {
+    mainWindow.setBackgroundColor('#0f172a');
     mainWindow.setBounds(screen.getPrimaryDisplay().bounds, true);
     mainWindow.setKiosk(true);
     mainWindow.setFullScreen(true);
@@ -759,6 +986,8 @@ function applyWindowLayout(mode = 'regular') {
     startKeyboardHook();
     hideTaskbar();
   } else {
+    rendererVisualScreen = null;
+    mainWindow.setBackgroundColor('#00000000');
     const size = SIZES[mode] || SIZES.regular;
     const { x, y } = mode === 'checklist'
       ? getCenter(size.width, size.height)
@@ -820,11 +1049,27 @@ function applyCaptureProfile(mode = 'overview') {
 }
 
 function createWindow() {
+  clearRendererStartupWatchdog();
+  if (rendererRecoveryTimer) {
+    clearTimeout(rendererRecoveryTimer);
+    rendererRecoveryTimer = null;
+  }
+  rendererReady = false;
+  rendererSafetyGeneration += 1;
+  rendererReadyProbeInFlight = false;
+  rendererStartupAttempts = 0;
+  rendererVisualScreen = null;
+  lastRendererHealthAt = 0;
+  lockModeEnabled = false;
+  stopRendererHealthMonitor();
+
+
   mainWindow = new BrowserWindow({
     // ── Kiosk & tampilan ─────────────────────────────────────────
-    kiosk:          true,   // Full screen mutlak, tutupi taskbar
-    fullscreen:     true,
-    alwaysOnTop:    true,
+    show:           false,  // Jangan tampilkan halaman kosong sebelum React siap
+    kiosk:          false,  // Diaktifkan setelah sinyal renderer-ready
+    fullscreen:     false,
+    alwaysOnTop:    false,
     frame:          false,  // Hapus title bar / window border
     transparent:    true,   // Background OS transparan →’ widget melayang
     skipTaskbar:    true,   // Sembunyikan dari taskbar Windows
@@ -852,19 +1097,54 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
 
-  // ── Load URL ─────────────────────────────────────────────────
-  if (isDev) {
-    mainWindow.loadURL('http://localhost:5173');
-    if (allowDevTools) {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
+  mainWindow.webContents.on('console-message', (_event, detailsOrLevel, legacyMessage, legacyLine, legacySourceId) => {
+    const details = detailsOrLevel && typeof detailsOrLevel === 'object'
+      ? detailsOrLevel
+      : {
+          level: detailsOrLevel,
+          message: legacyMessage,
+          lineNumber: legacyLine,
+          sourceId: legacySourceId,
+        };
+    const level = details.level;
+    if (level === 'warning' || level === 'error' || level === 2 || level === 3) {
+      log.warn('[RENDERER console]', {
+        level,
+        message: String(details.message || '').slice(0, 2000),
+        source: details.sourceId || details.source,
+        line: details.lineNumber || details.line,
+      });
     }
-  } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+  });
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    log.error('[RENDERER] preload-error:', preloadPath, error?.stack || error?.message || error);
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (isMainFrame === false) return;
+    log.error('[RENDERER] did-fail-load:', { errorCode, errorDescription, validatedURL });
+    armRendererStartupWatchdog();
+  });
+  mainWindow.webContents.on('did-finish-load', () => {
+    log.info('[RENDERER] Dokumen selesai dimuat; menunggu sinyal React.');
+    armRendererStartupWatchdog();
+  });
+  // ── Load URL ─────────────────────────────────────────────────
+  const rendererUrl = isDev
+    ? 'http://localhost:5173'
+    : `${RENDERER_SCHEME}://app/index.html`;
+  mainWindow.loadURL(rendererUrl).catch((error) => {
+    log.error('[RENDERER] loadURL gagal:', error.stack || error.message);
+    armRendererStartupWatchdog();
+  });
+  armRendererStartupWatchdog();
+
+  if (isDev && allowDevTools) {
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
 
   // ── Cegah navigasi keluar ─────────────────────────────────────
   mainWindow.webContents.on('will-navigate', (e, url) => {
-    if (!url.startsWith('http://localhost:5173') && !url.startsWith('file://')) {
+    if (!url.startsWith('http://localhost:5173') && !url.startsWith(`${RENDERER_SCHEME}://app/`)) {
       e.preventDefault();
     }
   });
@@ -950,25 +1230,120 @@ function createWindow() {
   mainWindow.on('move', (event) => {
     if (isKioskLocked()) event.preventDefault();
   });
-  // Start keyboard hook immediately on launch (kiosk starts in login mode)
-  startAggressiveFocusLoop();
-  startKeyboardHook();
-  hideTaskbar();
-
   mainWindow.webContents.on('render-process-gone', (_event, details) => {
     log.error('[WINDOW] render-process-gone:', details);
-    setTimeout(() => {
-      if (!mainWindow || mainWindow.isDestroyed()) createWindow();
-      else mainWindow.reload();
-    }, 1000);
+    scheduleRendererRecovery(`render-process-gone:${details?.reason || 'unknown'}`, 1000);
   });
-  mainWindow.webContents.on('unresponsive', () => {
-    log.warn('[WINDOW] Renderer unresponsive, mencoba reload.');
-    setTimeout(() => {
-      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.reload();
-    }, 1500);
+  mainWindow.on('unresponsive', () => {
+    log.error('[WINDOW] Renderer tidak merespons; proteksi kiosk dilepas untuk pemulihan.');
+    scheduleRendererRecovery('renderer-unresponsive', 1500);
+  });
+  mainWindow.on('responsive', () => {
+    log.info('[WINDOW] Renderer kembali merespons.');
   });
 }
+
+ipcMain.on('renderer-ready', async (event, details = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+
+  const screenName = ['login', 'setup'].includes(details.screen) ? details.screen : '';
+  const width = Number(details.width) || 0;
+  const height = Number(details.height) || 0;
+  if (!screenName || width < 240 || height < 240) {
+    log.warn('[RENDERER] Sinyal siap ditolak karena bukti visual tidak valid.', {
+      screen: screenName,
+      width,
+      height,
+    });
+    return;
+  }
+
+  // Setelah startup, event yang sama menjadi heartbeat visual. Renderer hanya
+  // mengirimnya selama elemen layar yang nyata masih terlihat dan berukuran cukup.
+  if (rendererReady) {
+    rendererVisualScreen = screenName;
+    lastRendererHealthAt = Date.now();
+    return;
+  }
+  if (rendererReadyProbeInFlight) return;
+
+  rendererReadyProbeInFlight = true;
+  const probeGeneration = rendererSafetyGeneration;
+  try {
+    // Jangan percaya sinyal IPC saja: periksa DOM dari main process sebelum kiosk,
+    // always-on-top, keyboard hook, atau taskbar lock diaktifkan.
+    const painted = await event.sender.executeJavaScript(`(() => {
+      const marker = document.querySelector('[data-labkom-screen="${screenName}"]');
+      if (!marker) return false;
+      const rect = marker.getBoundingClientRect();
+      const style = window.getComputedStyle(marker);
+      const background = String(style.backgroundColor || '').toLowerCase();
+      return rect.width >= 240
+        && rect.height >= 240
+        && style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && Number(style.opacity || 1) > 0
+        && background !== 'transparent'
+        && background !== 'rgba(0, 0, 0, 0)';
+    })()`);
+
+    if (
+      !painted
+      || event.sender.isDestroyed()
+      || probeGeneration !== rendererSafetyGeneration
+      || !mainWindow
+      || mainWindow.isDestroyed()
+      || event.sender !== mainWindow.webContents
+    ) {
+      log.warn(`[RENDERER] Bukti visual layar ${screenName} belum lolos; kiosk tetap nonaktif.`);
+      return;
+    }
+
+    rendererReady = true;
+    rendererVisualScreen = screenName;
+    lastRendererHealthAt = Date.now();
+    rendererStartupAttempts = 0;
+    clearRendererStartupWatchdog();
+    if (rendererRecoveryTimer) {
+      clearTimeout(rendererRecoveryTimer);
+      rendererRecoveryTimer = null;
+    }
+
+    log.info(`[RENDERER] Layar ${screenName} terlukis; proteksi aplikasi siswa diaktifkan.`);
+    applyWindowLayout(currentLayoutMode || 'login');
+    registerAppShortcuts();
+    startRendererHealthMonitor();
+  } catch (error) {
+    log.error('[RENDERER] Verifikasi visual gagal; kiosk tetap nonaktif:', error.message);
+  } finally {
+    rendererReadyProbeInFlight = false;
+  }
+});
+
+ipcMain.on('renderer-error', (event, details = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) return;
+
+  const info = {
+    source: String(details.source || 'renderer').slice(0, 200),
+    message: String(details.message || 'Unknown renderer error').slice(0, 2000),
+    stack: String(details.stack || '').slice(0, 8000),
+    fatal: Boolean(details.fatal),
+  };
+  log.error('[RENDERER] Error dilaporkan:', info);
+  if (!info.fatal || allowAppQuit) return;
+
+  clearRendererStartupWatchdog();
+  if (rendererRecoveryTimer) {
+    clearTimeout(rendererRecoveryTimer);
+    rendererRecoveryTimer = null;
+  }
+  releaseRendererLockForRecovery('renderer-fatal-error');
+  dialog.showErrorBox(
+    'LabKom Siswa mengalami kesalahan',
+    'Tampilan aplikasi gagal dijalankan. Aplikasi akan ditutup dengan aman agar komputer tidak terkunci.',
+  );
+  requestControlledQuit('renderer-fatal-error');
+});
 
 // ── IPC: Kirim hostname PC ke renderer ───────────────────────────
 ipcMain.handle('get-pc-name', () => os.hostname());
@@ -1030,6 +1405,11 @@ ipcMain.handle('get-client-token', async () => {
   const cfg = loadServerConfig();
   return await ensureClientToken(cfg.serverUrl);
 });
+ipcMain.handle('refresh-client-token', async () => {
+  const cfg = loadServerConfig();
+  return await refreshClientToken(cfg.serverUrl);
+});
+
 
 // ── IPC: Verifikasi emergency password (offline exit) ────────────────────────────────
 ipcMain.handle('verify-emergency-password', (_event, password) => {
@@ -1536,6 +1916,119 @@ async function applyControlPolicy(policy) {
   return { volume, wallpaper, web_filter: webFilter };
 }
 
+function getDeepFreezeManager() {
+  if (!deepFreezeManager) {
+    deepFreezeManager = createDeepFreezeManager({
+      userDataPath: app.getPath('userData'),
+      executablePath: process.execPath,
+      logger: log,
+    });
+  }
+  return deepFreezeManager;
+}
+
+function emitDeepFreezeStatus(status, metadata = {}) {
+  latestDeepFreezeStatus = status;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('deep-freeze-status', status);
+  }
+  if (!realtimeSocket?.connected) return;
+  realtimeSocket.emit('client:deep-freeze-status', {
+    ...status,
+    command_id: metadata.commandId || null,
+    action: metadata.action || 'status',
+  });
+}
+
+async function executeDeepFreezeCommand(payload = {}) {
+  const action = String(payload.action || '').toLowerCase();
+  const commandId = String(payload.id || '').trim();
+  if (!['status', 'freeze', 'unfreeze'].includes(action)) return;
+  if (!/^freeze_[A-Za-z0-9_-]{8,80}$/.test(commandId)) return;
+  if (executedDeepFreezeCommandIds.has(commandId)) return;
+
+  executedDeepFreezeCommandIds.add(commandId);
+  if (executedDeepFreezeCommandIds.size > 100) {
+    executedDeepFreezeCommandIds.delete(executedDeepFreezeCommandIds.values().next().value);
+  }
+
+  if (deepFreezeOperation) {
+    emitDeepFreezeStatus({
+      ...(latestDeepFreezeStatus || {}),
+      success: false,
+      state: 'busy',
+      message: 'Konfigurasi Deep Freeze lain sedang diproses.',
+      observed_at: Date.now(),
+    }, { commandId, action });
+    return;
+  }
+
+  emitDeepFreezeStatus({
+    ...(latestDeepFreezeStatus || {}),
+    success: true,
+    state: 'configuring',
+    message: action === 'status' ? 'Memeriksa status Deep Freeze.' : 'Konfigurasi Deep Freeze sedang diproses.',
+    observed_at: Date.now(),
+  }, { commandId, action });
+
+  const manager = getDeepFreezeManager();
+  const operation = action === 'status' ? manager.getStatus() : manager.configure(action);
+  deepFreezeOperation = operation;
+  try {
+    const status = await operation;
+    emitDeepFreezeStatus(status, { commandId, action });
+  } catch (error) {
+    log.error('[DEEP-FREEZE] Perintah gagal:', error);
+    emitDeepFreezeStatus({
+      success: false,
+      state: 'error',
+      message: 'Perintah Deep Freeze gagal diproses.',
+      technical_error: String(error.message || error).slice(0, 500),
+      observed_at: Date.now(),
+    }, { commandId, action });
+  } finally {
+    if (deepFreezeOperation === operation) deepFreezeOperation = null;
+  }
+}
+
+async function reconcileAndReportDeepFreezeStatus() {
+  if (deepFreezeOperation) return deepFreezeOperation;
+  const operation = getDeepFreezeManager().reconcilePending();
+  deepFreezeOperation = operation;
+  try {
+    const status = await operation;
+    emitDeepFreezeStatus(status, { action: 'status' });
+    return status;
+  } catch (error) {
+    log.warn('[DEEP-FREEZE] Status awal gagal:', error.message);
+    return null;
+  } finally {
+    if (deepFreezeOperation === operation) deepFreezeOperation = null;
+  }
+}
+
+function scheduleUwfAwarePowerAction(command) {
+  const fallbackArgs = command === 'restart'
+    ? ['/r', '/t', '0', '/c', 'Restart dijalankan oleh LabKom Admin.']
+    : ['/s', '/t', '0', '/c', 'Shutdown dijalankan oleh LabKom Admin.'];
+
+  setTimeout(() => {
+    const fallback = () => {
+      spawn('shutdown.exe', fallbackArgs, { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+    };
+    if (!latestDeepFreezeStatus?.current_frozen) {
+      fallback();
+      return;
+    }
+    getDeepFreezeManager().safePowerAction(command)
+      .then((handled) => { if (!handled) fallback(); })
+      .catch((error) => {
+        log.warn('[DEEP-FREEZE] Power action UWF gagal, memakai shutdown.exe:', error.message);
+        fallback();
+      });
+  }, 15_000);
+}
+
 function executeSystemCommand(payload = {}) {
   const command = String(payload.command || '').toLowerCase();
   const commandId = String(payload.id || '').trim();
@@ -1561,19 +2054,38 @@ function executeSystemCommand(payload = {}) {
     spawn('rundll32.exe', ['user32.dll,LockWorkStation'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
   } else if (command === 'sleep') {
     spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend',$false,$false)"], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
-  } else if (command === 'restart') {
-    spawn('shutdown.exe', ['/r', '/t', '15', '/c', 'Restart dijadwalkan oleh LabKom Admin.'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
-  } else if (command === 'shutdown') {
-    spawn('shutdown.exe', ['/s', '/t', '15', '/c', 'Shutdown dijadwalkan oleh LabKom Admin.'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+  } else if (command === 'restart' || command === 'shutdown') {
+    scheduleUwfAwarePowerAction(command);
   }
+}
+
+function scheduleRealtimeReconnect(serverUrl, delayMs = 5_000) {
+  if (!serverUrl || allowAppQuit || realtimeRetryTimer) return;
+  realtimeTargetUrl = serverUrl;
+  realtimeRetryTimer = setTimeout(() => {
+    realtimeRetryTimer = null;
+    connectRealtime(serverUrl).catch((error) => {
+      logScreenWarning(`[REALTIME] Retry gagal: ${error.message}`);
+      scheduleRealtimeReconnect(serverUrl);
+    });
+  }, delayMs);
+  realtimeRetryTimer.unref?.();
 }
 
 async function connectRealtime(serverUrl) {
   if (!serverUrl) return;
+  if (realtimeTargetUrl && realtimeTargetUrl !== serverUrl) {
+    clearTimeout(realtimeRetryTimer);
+    realtimeRetryTimer = null;
+  }
+  realtimeTargetUrl = serverUrl;
 
   try {
     const nextOrigin = new URL(serverUrl).origin;
-    if (realtimeSocket && realtimeSocket.io?.uri === nextOrigin) return;
+    if (realtimeSocket && realtimeSocket.io?.uri === nextOrigin) {
+      if (!realtimeSocket.connected && !realtimeSocket.active) realtimeSocket.connect();
+      return;
+    }
     if (realtimeSocket) {
       realtimeSocket.removeAllListeners();
       realtimeSocket.disconnect();
@@ -1583,20 +2095,30 @@ async function connectRealtime(serverUrl) {
     const clientToken = await ensureClientToken(serverUrl);
     if (!clientToken) {
       logScreenWarning('[REALTIME] Tidak bisa register device ke server. Akan retry pada koneksi berikut.');
+      scheduleRealtimeReconnect(serverUrl);
       return;
     }
 
     realtimeSocket = io(nextOrigin, {
       transports: ['websocket', 'polling'],
       reconnection: true,
-      timeout: 5000,
+      reconnectionDelay: 1_000,
+      reconnectionDelayMax: 5_000,
+      randomizationFactor: 0.5,
+      reconnectionAttempts: Infinity,
+      timeout: 5_000,
       auth: { role: 'client', client_token: clientToken, channel: 'main' },
     });
 
     realtimeSocket.on('connect', () => {
+      clearTimeout(realtimeRetryTimer);
+      realtimeRetryTimer = null;
       const payload = getPresencePayload();
       realtimeSocket.emit('client:hello', payload);
       realtimeSocket.emit('client:heartbeat', payload);
+      reconcileAndReportDeepFreezeStatus().catch((error) => {
+        log.warn('[DEEP-FREEZE] Gagal melaporkan status saat connect:', error.message);
+      });
       if (screenShareState.active) {
         postScreenshot();
       }
@@ -1625,8 +2147,15 @@ async function connectRealtime(serverUrl) {
       executeSystemCommand(payload);
     });
 
-    realtimeSocket.on('disconnect', () => {
+
+    realtimeSocket.on('deep-freeze:command', (payload = {}) => {
+      executeDeepFreezeCommand(payload).catch((error) => {
+        log.error('[DEEP-FREEZE] Handler command gagal:', error);
+      });
+    });
+    realtimeSocket.on('disconnect', (reason) => {
       applyCaptureProfile('overview');
+      if (reason === 'io server disconnect') scheduleRealtimeReconnect(serverUrl);
     });
 
     realtimeSocket.on('connect_error', async (err) => {
@@ -1635,12 +2164,13 @@ async function connectRealtime(serverUrl) {
       // Jika unauthorized → token mungkin expired/revoked. Hapus & register ulang.
       if (String(err.message || '').toLowerCase().includes('unauthorized')) {
         log.warn('[DEVICE-AUTH] Token ditolak server, register ulang...');
-        setStoredClientToken(null);
-        const fresh = await requestDeviceToken(serverUrl);
+        const fresh = await refreshClientToken(serverUrl);
         if (fresh && realtimeSocket) {
           realtimeSocket.auth = { role: 'client', client_token: fresh, channel: 'main' };
+          if (!realtimeSocket.active) realtimeSocket.connect();
         }
       }
+      if (!realtimeSocket?.active) scheduleRealtimeReconnect(serverUrl);
     });
   } catch (err) {
     logScreenWarning(`[REALTIME] Konfigurasi server realtime tidak valid: ${err.message}`);
@@ -1648,6 +2178,9 @@ async function connectRealtime(serverUrl) {
 }
 
 function disconnectRealtime() {
+  clearTimeout(realtimeRetryTimer);
+  realtimeRetryTimer = null;
+  realtimeTargetUrl = null;
   if (!realtimeSocket) return;
   realtimeSocket.removeAllListeners();
   realtimeSocket.disconnect();
@@ -1661,6 +2194,8 @@ function startPresenceHeartbeat() {
     registerMacToServer();
     if (realtimeSocket?.connected) {
       realtimeSocket.emit('client:heartbeat', getPresencePayload());
+    } else if (realtimeTargetUrl && !realtimeSocket?.active) {
+      scheduleRealtimeReconnect(realtimeTargetUrl);
     }
   };
 
@@ -2190,14 +2725,14 @@ ipcMain.handle('api-request', async (_event, url, options = {}) => {
 
   let result = await performRendererApiRequest(parsed, options, getStoredClientToken());
   if (result.status === 401) {
-    setStoredClientToken(null);
-    const freshToken = await requestDeviceToken(parsed.origin);
+    const freshToken = await refreshClientToken(parsed.origin);
     if (freshToken) result = await performRendererApiRequest(parsed, options, freshToken);
   }
   return result;
 
 });
 app.whenReady().then(async () => {
+  if (!isDev) registerRendererProtocol();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   await restoreSystemProxy().catch(() => false);
@@ -2206,7 +2741,6 @@ app.whenReady().then(async () => {
   // ── Daftarkan ke Windows Startup ─────────────────────────────
   // Agar app otomatis berjalan saat PC dinyalakan (kiosk mode)
   createWindow();
-  applyWindowLayout('login');
   startDiscoveryListener(); // → Dengarkan broadcast admin
 
   const initialConfig = loadServerConfig();
@@ -2229,39 +2763,11 @@ app.whenReady().then(async () => {
     }, 30_000);
   }
   scheduleUpdateChecks();
+  // Shortcut kiosk didaftarkan oleh renderer-ready agar startup tidak mengunci PC.
 
   // ── Shortcut keluar untuk Kepala Lab (Ctrl+Alt+Q) ───────────────
-  globalShortcut.register('Ctrl+Alt+Q', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('show-admin-dialog');
-    }
-  });
 
   // ── Blokir shortcut berbahaya ─────────────────────────────────
-  // Alt+F4, Ctrl+W, Ctrl+F4 (close window)
-  globalShortcut.register('Alt+F4',  () => {});
-  globalShortcut.register('Ctrl+W',  () => {});
-  globalShortcut.register('Ctrl+F4', () => {});
-  // Task Manager & Alt+Tab
-  globalShortcut.register('Ctrl+Shift+Escape', () => {});
-  globalShortcut.register('Ctrl+Alt+Delete',   () => {});
-  globalShortcut.register('Ctrl+Esc',          () => {});
-  globalShortcut.register('Alt+Esc',           () => {});
-  globalShortcut.register('Alt+Tab',            () => {});
-  globalShortcut.register('Alt+Space',         () => {});
-  globalShortcut.register('Meta+Tab',           () => {});
-  globalShortcut.register('Meta+D',             () => {});
-  // F11, F4
-  globalShortcut.register('F11', () => {});
-  globalShortcut.register('F4',  () => {});
-  // DevTools (nonaktif di production)
-  if (!isDev) {
-    globalShortcut.register('F12',            () => {});
-    globalShortcut.register('Ctrl+Shift+I',   () => {});
-    globalShortcut.register('Ctrl+Shift+J',   () => {});
-    globalShortcut.register('Ctrl+R',         () => {});
-    globalShortcut.register('F5',             () => {});
-  }
 });
 
 // Jangan tutup app saat semua window ditutup
@@ -2297,6 +2803,7 @@ app.on('second-instance', () => {
 
 app.on('will-quit', () => {
   if (updateCheckTimer) { clearInterval(updateCheckTimer); updateCheckTimer = null; }
+  stopRendererHealthMonitor();
   stopDiscoveryListener();
   stopPresenceHeartbeat();
   disconnectRealtime();
@@ -2316,4 +2823,158 @@ app.on('will-quit', () => {
   }
 
   globalShortcut.unregisterAll();
+});
+
+async function getLocalDeepFreezeStatus() {
+  if (deepFreezeOperation) {
+    return {
+      ...(latestDeepFreezeStatus || {}),
+      success: true,
+      state: 'configuring',
+      message: 'Konfigurasi Deep Freeze sedang diproses.',
+      observed_at: Date.now(),
+    };
+  }
+
+  const operation = getDeepFreezeManager().getStatus();
+  deepFreezeOperation = operation;
+  try {
+    const status = await operation;
+    emitDeepFreezeStatus(status, { action: 'status' });
+    return status;
+  } catch (error) {
+    const status = {
+      success: false,
+      state: 'error',
+      message: 'Status Deep Freeze tidak dapat dibaca.',
+      technical_error: String(error.message || error).slice(0, 500),
+      observed_at: Date.now(),
+    };
+    emitDeepFreezeStatus(status, { action: 'status' });
+    return status;
+  } finally {
+    if (deepFreezeOperation === operation) deepFreezeOperation = null;
+  }
+}
+
+async function configureDeepFreezeLocally(action) {
+  if (!['freeze', 'unfreeze'].includes(action)) {
+    return { success: false, state: 'error', message: 'Aksi Deep Freeze tidak valid.' };
+  }
+  if (deepFreezeOperation) {
+    return {
+      ...(latestDeepFreezeStatus || {}),
+      success: false,
+      state: 'busy',
+      message: 'Konfigurasi Deep Freeze lain sedang diproses.',
+      observed_at: Date.now(),
+    };
+  }
+
+  emitDeepFreezeStatus({
+    ...(latestDeepFreezeStatus || {}),
+    success: true,
+    state: 'configuring',
+    message: action === 'freeze'
+      ? 'Menyiapkan perlindungan Deep Freeze.'
+      : 'Menyiapkan mode terbuka.',
+    observed_at: Date.now(),
+  }, { action });
+
+  const operation = getDeepFreezeManager().configure(action);
+  deepFreezeOperation = operation;
+  try {
+    const status = await operation;
+    emitDeepFreezeStatus(status, { action });
+    return status;
+  } catch (error) {
+    const status = {
+      success: false,
+      state: 'error',
+      message: 'Perintah Deep Freeze gagal diproses.',
+      technical_error: String(error.message || error).slice(0, 500),
+      observed_at: Date.now(),
+    };
+    emitDeepFreezeStatus(status, { action });
+    return status;
+  } finally {
+    if (deepFreezeOperation === operation) deepFreezeOperation = null;
+  }
+}
+
+async function relaunchClientAsAdministrator() {
+  if (process.platform !== 'win32') {
+    return { success: false, message: 'Izin Administrator hanya tersedia pada Windows.' };
+  }
+  if (!app.isPackaged) {
+    return { success: false, message: 'Relaunch Administrator hanya aktif pada aplikasi yang sudah diinstal.' };
+  }
+
+  const currentStatus = await getDeepFreezeManager().getStatus();
+  if (currentStatus.is_admin) {
+    return { success: true, already_admin: true, message: 'Aplikasi sudah berjalan sebagai Administrator.' };
+  }
+
+  const scriptPath = path.join(app.getPath('userData'), 'labkom-elevate.ps1');
+  const script = [
+    'param([Parameter(Mandatory=$true)][string]$Executable)',
+    'Start-Process -FilePath $Executable -Verb RunAs',
+  ].join('\r\n');
+  fs.writeFileSync(scriptPath, script, 'utf8');
+
+  // Lepaskan mutex sebelum proses elevated dimulai agar instance baru tidak
+  // menganggap dirinya duplikat. Jika UAC dibatalkan, mutex diminta kembali.
+  app.releaseSingleInstanceLock();
+  const result = await runHiddenProcess(getDeepFreezeManager().paths.powershellPath, [
+    '-NoLogo', '-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden',
+    '-ExecutionPolicy', 'Bypass', '-File', scriptPath,
+    '-Executable', process.execPath,
+  ], { capture: true });
+
+  if (!result.success) {
+    app.requestSingleInstanceLock();
+    const cancelled = /cancel|dibatalkan/i.test(String(result.stderr || ''));
+    return {
+      success: false,
+      message: cancelled
+        ? 'Permintaan Administrator dibatalkan.'
+        : 'Aplikasi gagal dijalankan ulang sebagai Administrator.',
+    };
+  }
+
+  setTimeout(() => requestControlledQuit('relaunch-as-administrator'), 500);
+  return { success: true, message: 'Aplikasi sedang dijalankan ulang sebagai Administrator.' };
+}
+
+ipcMain.handle('get-deep-freeze-status', async (event) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { success: false, state: 'error', message: 'Renderer tidak dikenali.' };
+  }
+  return getLocalDeepFreezeStatus();
+});
+
+ipcMain.handle('configure-deep-freeze', async (event, payload = {}) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { success: false, state: 'error', message: 'Renderer tidak dikenali.' };
+  }
+  if (!verifyEmergencyPassword(String(payload.password || ''))) {
+    return { success: false, authorized: false, state: 'error', message: 'Password Kepala Lab salah.' };
+  }
+  const action = String(payload.action || '').toLowerCase();
+  return configureDeepFreezeLocally(action);
+});
+
+ipcMain.handle('relaunch-client-as-admin', async (event, password) => {
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents) {
+    return { success: false, message: 'Renderer tidak dikenali.' };
+  }
+  if (!verifyEmergencyPassword(String(password || ''))) {
+    return { success: false, authorized: false, message: 'Password Kepala Lab salah.' };
+  }
+  try {
+    return await relaunchClientAsAdministrator();
+  } catch (error) {
+    log.warn('[DEEP-FREEZE] Relaunch Administrator gagal:', error.message);
+    return { success: false, message: 'Aplikasi gagal dijalankan ulang sebagai Administrator.' };
+  }
 });

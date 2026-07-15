@@ -12,6 +12,7 @@ import {
   Settings,
   X,
 } from 'lucide-react';
+import DeepFreezePanel from './DeepFreezePanel.jsx';
 
 const STATUS_COPY = {
   idle: ['Belum diperiksa', 'Gunakan tombol di bawah untuk memeriksa versi terbaru.'],
@@ -101,7 +102,23 @@ function UpdateStatus({ status = {}, autoUpdate, onCheck, onDownload, onInstall 
   );
 }
 
-export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStatus, onClose, onSave, onCheck, onDownload, onInstall, branding = {} }) {
+export function ClientSettingsModal({
+  open,
+  settings = {},
+  serverUrl,
+  updateStatus,
+  deepFreezeStatus,
+  deepFreezeBusy,
+  onClose,
+  onSave,
+  onCheck,
+  onDownload,
+  onInstall,
+  onDeepFreezeRefresh,
+  onDeepFreezeConfigure,
+  onDeepFreezeElevate,
+  branding = {},
+}) {
   const [draft, setDraft] = useState({ autoUpdate: true, openAtLogin: true, notifyUpdates: true, serverUrl: '', registrationKey: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
@@ -117,6 +134,10 @@ export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStat
     });
     setMessage(null);
   }, [open, serverUrl, settings]);
+
+  useEffect(() => {
+    if (open) onDeepFreezeRefresh?.();
+  }, [open, onDeepFreezeRefresh]);
 
   if (!open) return null;
 
@@ -177,6 +198,14 @@ export function ClientSettingsModal({ open, settings = {}, serverUrl, updateStat
           </div>
 
           <UpdateStatus status={updateStatus} autoUpdate={draft.autoUpdate} onCheck={onCheck} onDownload={onDownload} onInstall={onInstall} />
+
+          <DeepFreezePanel
+            status={deepFreezeStatus}
+            busy={deepFreezeBusy}
+            onRefresh={onDeepFreezeRefresh}
+            onConfigure={onDeepFreezeConfigure}
+            onElevate={onDeepFreezeElevate}
+          />
           {message && <div className={`rounded-xl border px-4 py-3 text-sm ${message.ok ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300' : 'border-red-500/30 bg-red-500/10 text-red-300'}`}>{message.text}</div>}
         </div>
 

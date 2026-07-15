@@ -17,6 +17,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdates:    ()       => ipcRenderer.invoke('check-client-update'),
   downloadUpdate:     ()       => ipcRenderer.invoke('download-client-update'),
   installUpdate:      ()       => ipcRenderer.send('install-client-update'),
+  getDeepFreezeStatus: () => ipcRenderer.invoke('get-deep-freeze-status'),
+  configureDeepFreeze: (action, password) => ipcRenderer.invoke('configure-deep-freeze', { action, password }),
+  relaunchAsAdministrator: (password) => ipcRenderer.invoke('relaunch-client-as-admin', password),
+  onDeepFreezeStatus: (cb) => ipcRenderer.on('deep-freeze-status', (_e, data) => cb(data)),
+
   onUpdateStatus:     (cb)     => ipcRenderer.on('client-update-status', (_e, data) => cb(data)),
 
   // ── Login / Logout IPC ──────────────────────────────────────────
@@ -58,6 +63,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Device token untuk socket auth (di-issue oleh main process) ──
   getClientToken: () => ipcRenderer.invoke('get-client-token'),
+  refreshClientToken: () => ipcRenderer.invoke('refresh-client-token'),
+
+  // Startup/health signal hanya dikirim setelah layar login/setup terbukti terlukis.
+  reportRendererReady: (details = {}) => ipcRenderer.send('renderer-ready', {
+    screen: ['login', 'setup'].includes(details.screen) ? details.screen : '',
+    width: Number.isFinite(details.width) ? Math.round(details.width) : 0,
+    height: Number.isFinite(details.height) ? Math.round(details.height) : 0,
+  }),
+  reportRendererError: (details = {}) => ipcRenderer.send('renderer-error', {
+    message: String(details.message || 'Unknown renderer error').slice(0, 2000),
+    stack: String(details.stack || '').slice(0, 8000),
+    source: String(details.source || 'renderer').slice(0, 200),
+    fatal: Boolean(details.fatal),
+  }),
+
 
   // Simpan file kelas yang diterima ke Downloads/LabKom.
   saveReceivedFile: (payload) => ipcRenderer.invoke('save-received-file', payload),

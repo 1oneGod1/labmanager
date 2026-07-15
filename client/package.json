@@ -1,13 +1,13 @@
 {
   "name": "labkom-client",
-  "version": "1.2.0",
+  "version": "1.2.1784045362",
   "description": "Aplikasi klien manajemen lab komputer - PC Siswa",
   "author": "LabKom",
   "main": "electron/main.js",
   "scripts": {
     "dev:react": "vite",
     "build:react": "vite build",
-    "test": "node scripts/verify-lock-helper.js && node scripts/verify-emergency-password.js",
+    "test": "node scripts/verify-lock-helper.js && node scripts/verify-emergency-password.js && node scripts/verify-deep-freeze.js",
     "electron:dev": "set \"ELECTRON_RUN_AS_NODE=\" && concurrently \"npm.cmd run dev:react\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "set \"ELECTRON_RUN_AS_NODE=\" && npm.cmd run build:react && electron-builder"
   },

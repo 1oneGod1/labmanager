@@ -21,11 +21,13 @@ import RegisterWorkspace from './components/RegisterWorkspace.jsx';
 import ReportsWorkspace from './components/ReportsWorkspace.jsx';
 import BrandingWorkspace from './components/BrandingWorkspace.jsx';
 import BrandLogo from './components/BrandLogo.jsx';
+import DeepFreezeControls from './components/DeepFreezeControls.jsx';
 import { DEFAULT_BRANDING, normalizeBranding } from './branding.js';
 
 // Di Electron production, window load dari file:// sehingga fetch relatif gagal.
 // Deteksi protokol: file:// → pakai absolute URL ke server lokal.
-const API = (typeof window !== 'undefined' && window.location.protocol === 'file:')
+const DESKTOP_PROTOCOLS = new Set(['file:', 'labkom:']);
+const API = (typeof window !== 'undefined' && DESKTOP_PROTOCOLS.has(window.location.protocol))
   ? 'http://localhost:3001'
   : '';  // dev mode: Vite proxy arahkan /api → localhost:3001
 const REALTIME_API = API || 'http://localhost:3001';
@@ -517,6 +519,7 @@ export default function AdminDashboard() {
   const [realtimeSocket, setRealtimeSocket] = useState(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [policyStatusByPc, setPolicyStatusByPc] = useState({});
+  const [deepFreezeStatusByPc, setDeepFreezeStatusByPc] = useState({});
   const focusedScreenRef = useRef(null);
   const screensRequestRef = useRef(null);
 
@@ -653,6 +656,8 @@ export default function AdminDashboard() {
   const [showPowerMenu, setShowPowerMenu] = useState(false);
   const [confirmSystemCommand, setConfirmSystemCommand] = useState(null);
   const [systemCommandBusy, setSystemCommandBusy] = useState(false);
+  const [deepFreezeBusy, setDeepFreezeBusy] = useState({});
+  const [confirmDeepFreeze, setConfirmDeepFreeze] = useState(null);
   const [mappingBusy, setMappingBusy] = useState({});
   const [mappingSelections, setMappingSelections] = useState({});
 
@@ -730,6 +735,23 @@ export default function AdminDashboard() {
     socket.on('client:policy-status', (payload = {}) => {
       if (!payload.pc_name) return;
       setPolicyStatusByPc((previous) => ({ ...previous, [payload.pc_name]: payload }));
+    });
+
+    socket.on('deep-freeze:snapshot', (items = []) => {
+      if (!Array.isArray(items)) return;
+      setDeepFreezeStatusByPc(items.reduce((result, item) => {
+        if (item?.pc_name) result[item.pc_name] = item;
+        return result;
+      }, {}));
+    });
+
+    socket.on('client:deep-freeze-status', (payload = {}) => {
+      if (!payload.pc_name) return;
+      setDeepFreezeStatusByPc((previous) => ({ ...previous, [payload.pc_name]: payload }));
+      setDeepFreezeBusy((previous) => ({ ...previous, [payload.pc_name]: false }));
+      if (payload.command_id && payload.success === false) {
+        showToast(`${payload.pc_name}: ${payload.message || 'Perintah Deep Freeze gagal.'}`, 'error');
+      }
     });
 
     socket.on('client:system-command-ack', (payload = {}) => {
@@ -869,6 +891,77 @@ export default function AdminDashboard() {
       setConfirmSystemCommand(null);
     });
   };
+  const sendDeepFreezeCommand = (request) => {
+    if (!request) return;
+    const busyKey = request.target;
+    setDeepFreezeBusy((previous) => ({ ...previous, [busyKey]: true }));
+
+    if (DEMO_MODE) {
+      const targetNames = request.target === 'all'
+        ? pcs.map((pc) => pc.actual_pc_name || pc.id)
+        : [request.target];
+      setDeepFreezeStatusByPc((previous) => {
+        const next = { ...previous };
+        targetNames.forEach((pcName) => {
+          next[pcName] = {
+            ...(next[pcName] || {}),
+            pc_name: pcName,
+            success: true,
+            supported: true,
+            feature_installed: true,
+            provider_ready: true,
+            current_frozen: false,
+            next_frozen: request.action === 'freeze',
+            state: request.action === 'freeze' ? 'pending_freeze' : request.action === 'unfreeze' ? 'open' : 'open',
+            message: request.action === 'freeze' ? 'Mode beku dijadwalkan.' : 'Mode terbuka aktif.',
+          };
+        });
+        return next;
+      });
+      setDeepFreezeBusy((previous) => ({ ...previous, [busyKey]: false }));
+      setConfirmDeepFreeze(null);
+      return;
+    }
+
+    const socket = realtimeSocketRef.current;
+    if (!socket?.connected) {
+      showToast('Server realtime belum terhubung.', 'error');
+      setDeepFreezeBusy((previous) => ({ ...previous, [busyKey]: false }));
+      return;
+    }
+
+    socket.timeout(20_000).emit('admin:deep-freeze', {
+      action: request.action,
+      target: request.target,
+    }, (error, response) => {
+      setDeepFreezeBusy((previous) => ({ ...previous, [busyKey]: false }));
+      if (error || !response?.success || response.count < 1) {
+        showToast(response?.error || 'Tidak ada client online yang menerima perintah Deep Freeze.', 'error');
+        return;
+      }
+      const label = request.action === 'status'
+        ? 'Pemeriksaan status'
+        : request.action === 'freeze' ? 'Perintah bekukan' : 'Perintah buka mode';
+      showToast(`${label} dikirim ke ${response.count} PC.`);
+      setConfirmDeepFreeze(null);
+    });
+  };
+
+  const requestDeepFreeze = (action, target) => {
+    const request = {
+      action,
+      target,
+      label: action === 'freeze' ? 'Bekukan drive sistem' : action === 'unfreeze' ? 'Buka drive sistem' : 'Periksa status',
+    };
+    if (action === 'status') {
+      sendDeepFreezeCommand(request);
+      return;
+    }
+    setConfirmDeepFreeze(request);
+  };
+
+  const handleConfirmDeepFreeze = () => sendDeepFreezeCommand(confirmDeepFreeze);
+
 
   const handleWakeOnLan = async (mac, pc_name) => {
     setWolBusy(prev => ({ ...prev, [pc_name]: true }));
@@ -2775,6 +2868,14 @@ export default function AdminDashboard() {
             )}
           </section>
         )}
+        <DeepFreezeControls
+          pcName={mappingKey}
+          status={deepFreezeStatusByPc[mappingKey]}
+          offline={pc.status === 'offline'}
+          busy={deepFreezeBusy[mappingKey] === true}
+          onRefresh={() => requestDeepFreeze('status', mappingKey)}
+          onRequest={(action) => requestDeepFreeze(action, mappingKey)}
+        />
         <div className="labkom-quick-grid">
           <button onClick={() => openRemoteForPc(pc)}><Eye />Remote</button>
           <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'lock', target: pc.actual_pc_name || pc.id, label: 'Kunci Windows' })}><Lock />Kunci</button>
@@ -3439,6 +3540,17 @@ export default function AdminDashboard() {
                 <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'restart', target: 'all', label: 'Restart' }); }} className="p-3 rounded-xl border border-blue-500/30 bg-blue-500/10 text-left hover:bg-blue-500/20"><strong className="text-sm text-blue-300">Restart</strong><span className="block text-[10px] text-slate-400 mt-1">15 detik</span></button>
                 <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'shutdown', target: 'all', label: 'Shutdown' }); }} className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-left hover:bg-red-500/20"><strong className="text-sm text-red-300">Shutdown</strong><span className="block text-[10px] text-slate-400 mt-1">15 detik</span></button>
               </div>
+              <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3">
+                <div className="mb-2 flex items-center gap-2 text-cyan-200">
+                  <HardDrive className="h-4 w-4" />
+                  <strong className="text-xs">Deep Freeze semua PC</strong>
+                </div>
+                <p className="mb-3 text-[10px] leading-4 text-slate-400">Atur apakah perubahan drive sistem dibuang atau disimpan mulai restart berikutnya.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => { setShowPowerMenu(false); requestDeepFreeze('freeze', 'all'); }} disabled={deepFreezeBusy.all} className="rounded-lg bg-cyan-500 px-3 py-2 text-[10px] font-semibold text-slate-950 hover:bg-cyan-400 disabled:opacity-40"><Archive className="mr-1 inline h-3 w-3" />Bekukan semua</button>
+                  <button onClick={() => { setShowPowerMenu(false); requestDeepFreeze('unfreeze', 'all'); }} disabled={deepFreezeBusy.all} className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-40"><HardDrive className="mr-1 inline h-3 w-3" />Buka semua</button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -3468,6 +3580,37 @@ export default function AdminDashboard() {
             <div className="flex gap-3">
               <button onClick={() => setConfirmSystemCommand(null)} disabled={systemCommandBusy} className="flex-1 py-2.5 border border-slate-600 text-slate-300 hover:bg-slate-800 disabled:opacity-50 rounded-xl font-medium">Batal</button>
               <button onClick={handleSystemCommand} disabled={systemCommandBusy} className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 rounded-xl font-bold">{systemCommandBusy ? 'Mengirim…' : 'Ya, kirim'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeepFreeze && (
+        <div className="fixed inset-0 z-[77] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-cyan-500/25 bg-[#0f172a] p-6 text-white shadow-2xl">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-cyan-500/15"><HardDrive className="h-6 w-6 text-cyan-300" /></div>
+            <h3 className="mb-2 text-center text-lg font-bold">{confirmDeepFreeze.label}?</h3>
+            <p className="text-center text-sm text-slate-400">
+              Target: {confirmDeepFreeze.target === 'all' ? 'semua PC siswa yang online' : confirmDeepFreeze.target}.
+            </p>
+            <div className="my-5 rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-5 text-amber-100">
+              {confirmDeepFreeze.action === 'freeze' ? (
+                <>
+                  <p>UWF akan dipasang bila tersedia dan mode beku aktif setelah restart. Perubahan siswa pada drive sistem kemudian akan dibuang setiap restart.</p>
+                  <p className="mt-2">Windows Update dan pemeliharaan sistem dapat dibatasi selama UWF aktif. Gunakan mode terbuka sebelum melakukan maintenance.</p>
+                </>
+              ) : (
+                <>
+                  <p>Mode terbuka baru aktif setelah restart. Perubahan yang dibuat pada sesi beku saat ini tetap dibuang dan tidak dapat disimpan seluruhnya.</p>
+                  <p className="mt-2">Setelah restart berikutnya, perubahan baru akan tersimpan normal.</p>
+                </>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDeepFreeze(null)} disabled={deepFreezeBusy[confirmDeepFreeze.target]} className="flex-1 rounded-xl border border-slate-600 py-2.5 font-medium text-slate-300 hover:bg-slate-800 disabled:opacity-50">Batal</button>
+              <button onClick={handleConfirmDeepFreeze} disabled={deepFreezeBusy[confirmDeepFreeze.target]} className="flex-1 rounded-xl bg-cyan-500 py-2.5 font-bold text-slate-950 hover:bg-cyan-400 disabled:opacity-50">
+                {deepFreezeBusy[confirmDeepFreeze.target] ? 'Mengirim...' : 'Ya, terapkan'}
+              </button>
             </div>
           </div>
         </div>

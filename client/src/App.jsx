@@ -9,7 +9,7 @@ import AttentionModeOverlay from './AttentionModeOverlay.jsx';
 import ChatBubble from './ChatBubble.jsx';
 import AdminScreenShare from './AdminScreenShare.jsx';
 import { ClientSettingsModal, ClientUpdateNotice } from './ClientSettingsPanel.jsx';
-import { apiCall } from './api.js';
+import { apiCall, settleWithin } from './api.js';
 import BrandLogo from './BrandLogo.jsx';
 import { cacheBranding, loadCachedBranding } from './branding.js';
 
@@ -92,9 +92,65 @@ export default function App() {
     appVersion: '1.2.0',
   });
   const [updateStatus, setUpdateStatus] = useState({ state: 'idle', currentVersion: '1.2.0' });
+  const [deepFreezeStatus, setDeepFreezeStatus] = useState({
+    state: 'loading',
+    message: 'Memeriksa status perlindungan komputer...',
+  });
+  const [deepFreezeBusy, setDeepFreezeBusy] = useState(false);
   const [branding, setBranding] = useState(loadCachedBranding);
   const autoSwitchingServerRef = useRef(false);
+  const serverCheckInFlightRef = useRef(false);
   const socketRef = useRef(null);
+
+  // Fail-open startup handshake. Main process hanya boleh mengaktifkan kiosk
+  // setelah layar login/setup benar-benar ada, berukuran layar, dan terlihat.
+  // Heartbeat berikutnya memastikan jendela transparan tidak pernah diam-diam
+  // menutup desktop ketika UI React hilang atau macet.
+  useEffect(() => {
+    if (![MODE_SETUP, MODE_LOGIN].includes(mode)) return undefined;
+
+    let cancelled = false;
+    let frameOne = 0;
+    let frameTwo = 0;
+
+    const reportPaintedScreen = () => {
+      if (cancelled) return;
+      const marker = document.querySelector(`[data-labkom-screen="${mode}"]`);
+      if (!marker) return;
+
+      const rect = marker.getBoundingClientRect();
+      const style = window.getComputedStyle(marker);
+      const background = String(style.backgroundColor || '').toLowerCase();
+      if (
+        rect.width < 240
+        || rect.height < 240
+        || style.display === 'none'
+        || style.visibility === 'hidden'
+        || Number(style.opacity || 1) <= 0
+        || background === 'transparent'
+        || background === 'rgba(0, 0, 0, 0)'
+      ) return;
+
+      window.electronAPI?.reportRendererReady?.({
+        screen: mode,
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    // Dua animation frame menjamin React commit + kalkulasi layout sudah selesai.
+    frameOne = window.requestAnimationFrame(() => {
+      frameTwo = window.requestAnimationFrame(reportPaintedScreen);
+    });
+    const heartbeat = window.setInterval(reportPaintedScreen, 2_000);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frameOne);
+      window.cancelAnimationFrame(frameTwo);
+      window.clearInterval(heartbeat);
+    };
+  }, [mode]);
 
   const applyBranding = useCallback((value) => {
     const next = cacheBranding(value);
@@ -112,9 +168,14 @@ export default function App() {
 
   // ── Load konfigurasi server URL dari Electron userData ──────────
   useEffect(() => {
+    let cancelled = false;
+
     async function loadConfig() {
+      try {
       if (window.electronAPI?.getClientSettings) {
-        const storedSettings = await window.electronAPI.getClientSettings();
+        const storedSettings = await settleWithin(window.electronAPI.getClientSettings(), 5_000, null);
+        if (cancelled) return;
+        if (!storedSettings) throw new Error('Konfigurasi lokal tidak merespons.');
         setClientSettings(storedSettings);
         setUpdateStatus(storedSettings.updateStatus || { state: 'idle', currentVersion: storedSettings.appVersion });
         const stored = storedSettings.serverUrl;
@@ -126,7 +187,8 @@ export default function App() {
           setMode(MODE_SETUP);
         }
       } else if (window.electronAPI?.getServerUrl) {
-        const stored = await window.electronAPI.getServerUrl();
+        const stored = await settleWithin(window.electronAPI.getServerUrl(), 5_000, null);
+        if (cancelled) return;
         if (stored) {
           setServerUrl(stored);
           setSetupInput(stored);
@@ -139,8 +201,16 @@ export default function App() {
         persistServerUrl('http://localhost:3001');
         setMode(MODE_LOGIN);
       }
+      } catch (loadError) {
+        console.error('[Startup] Konfigurasi gagal dimuat:', loadError);
+        if (!cancelled) {
+          setSetupError('Konfigurasi tidak dapat dimuat. Aplikasi tetap aktif; periksa alamat server.');
+          setMode(MODE_SETUP);
+        }
+      }
     }
     loadConfig();
+    return () => { cancelled = true; };
   }, [persistServerUrl]);
 
   useEffect(() => {
@@ -187,12 +257,17 @@ export default function App() {
 
   // ── Cek status server setiap 5 detik ───────────────────────────
   const checkServer = useCallback(async () => {
-    if (!serverUrl) return;
+    if (!serverUrl || serverCheckInFlightRef.current) return;
+    serverCheckInFlightRef.current = true;
     try {
       // Gunakan IPC (Node.js http) — lebih andal dari fetch di kiosk file://
       if (window.electronAPI?.verifyServer) {
-        const result = await window.electronAPI.verifyServer(serverUrl);
-        setServerOnline(result.ok);
+        const result = await settleWithin(
+          window.electronAPI.verifyServer(serverUrl),
+          5_000,
+          { ok: false },
+        );
+        setServerOnline(Boolean(result?.ok));
       } else {
         // Fallback dev/browser
         const res = await fetch(`${serverUrl}/`, { signal: AbortSignal.timeout(3000) });
@@ -200,6 +275,8 @@ export default function App() {
       }
     } catch {
       setServerOnline(false);
+    } finally {
+      serverCheckInFlightRef.current = false;
     }
   }, [serverUrl]);
 
@@ -230,11 +307,16 @@ export default function App() {
       });
     });
     window.electronAPI?.onUpdateStatus?.((status) => setUpdateStatus(status));
+    window.electronAPI?.onDeepFreezeStatus?.((status) => {
+      setDeepFreezeStatus(status);
+      setDeepFreezeBusy(['configuring', 'busy'].includes(status?.state));
+    });
     return () => {
       window.electronAPI?.removeAllListeners('kiosk-off');
       window.electronAPI?.removeAllListeners('return-to-login');
       window.electronAPI?.removeAllListeners('server-discovered');
       window.electronAPI?.removeAllListeners('client-update-status');
+      window.electronAPI?.removeAllListeners('deep-freeze-status');
     };
   }, []);
 
@@ -311,6 +393,7 @@ export default function App() {
 
     let socket;
     let cancelled = false;
+    let tokenRetryTimer = null;
 
     const attachSocketListeners = (s) => {
       s.on('attention-mode', (payload) => {
@@ -365,44 +448,74 @@ export default function App() {
 
       s.on('connect', () => {
         console.log('[Socket] Connected to server for attention mode');
+        setServerOnline(true);
         s.emit('client:hello', {
           pc_name: pcName,
           student_name: studentData?.nama_lengkap || null,
         });
       });
 
-      s.on('disconnect', () => {
+      s.on('disconnect', (reason) => {
         console.log('[Socket] Disconnected from server');
         setAttentionMode({ enabled: false, message: '' });
+        if (reason !== 'io client disconnect') setServerOnline(false);
       });
 
-      s.on('connect_error', (error) => {
+      s.on('connect_error', async (error) => {
         console.error('[Socket] Connection error:', error);
+        setServerOnline(false);
+        if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
+          const freshToken = await settleWithin(
+            window.electronAPI?.refreshClientToken?.(),
+            7_000,
+            null,
+          );
+          if (freshToken && !cancelled) {
+            s.auth = { role: 'client', client_token: freshToken, channel: 'renderer' };
+            if (!s.active) s.connect();
+          }
+        }
       });
     };
 
-    (async () => {
-      const clientToken = await window.electronAPI?.getClientToken?.();
-      if (cancelled) return;
-      if (!clientToken) {
-        console.warn('[Socket] Tidak ada client token, socket realtime tidak akan dibuka.');
-        return;
+    const startSocket = async () => {
+      try {
+        const clientToken = await settleWithin(
+          window.electronAPI?.getClientToken?.(),
+          7_000,
+          null,
+        );
+        if (cancelled) return;
+        if (!clientToken) {
+          console.warn('[Socket] Token belum tersedia; mencoba lagi dalam 5 detik.');
+          tokenRetryTimer = setTimeout(startSocket, 5_000);
+          return;
+        }
+
+        socket = io(serverUrl, {
+          transports: ['websocket', 'polling'],
+          auth: { role: 'client', client_token: clientToken, channel: 'renderer' },
+          reconnection: true,
+          reconnectionDelay: 1_000,
+          reconnectionDelayMax: 5_000,
+          randomizationFactor: 0.5,
+          reconnectionAttempts: Infinity,
+          timeout: 5_000,
+        });
+
+        socketRef.current = socket;
+        attachSocketListeners(socket);
+      } catch (socketError) {
+        console.error('[Socket] Gagal menyiapkan koneksi:', socketError);
+        if (!cancelled) tokenRetryTimer = setTimeout(startSocket, 5_000);
       }
+    };
 
-      socket = io(serverUrl, {
-        transports: ['websocket', 'polling'],
-        auth: { role: 'client', client_token: clientToken, channel: 'renderer' },
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
-      });
-
-      socketRef.current = socket;
-      attachSocketListeners(socket);
-    })();
+    startSocket();
 
     return () => {
       cancelled = true;
+      clearTimeout(tokenRetryTimer);
       if (socket) socket.disconnect();
       socketRef.current = null;
     };
@@ -556,6 +669,65 @@ export default function App() {
   const handleDownloadUpdate = () => window.electronAPI?.downloadUpdate?.();
   const handleInstallUpdate = () => window.electronAPI?.installUpdate?.();
 
+  const handleRefreshDeepFreeze = useCallback(async () => {
+    if (!window.electronAPI?.getDeepFreezeStatus) {
+      const result = {
+        success: false,
+        state: 'unsupported_platform',
+        supported: false,
+        message: 'Status Deep Freeze hanya tersedia pada aplikasi Windows yang telah diinstal.',
+      };
+      setDeepFreezeStatus(result);
+      return result;
+    }
+
+    setDeepFreezeBusy(true);
+    try {
+      const result = await window.electronAPI.getDeepFreezeStatus();
+      setDeepFreezeStatus(result);
+      return result;
+    } catch (error) {
+      const result = { success: false, state: 'error', message: error?.message || 'Status Deep Freeze gagal dibaca.' };
+      setDeepFreezeStatus(result);
+      return result;
+    } finally {
+      setDeepFreezeBusy(false);
+    }
+  }, []);
+
+  const handleConfigureDeepFreeze = useCallback(async (action, adminPassword) => {
+    if (!window.electronAPI?.configureDeepFreeze) {
+      return { success: false, message: 'Kontrol Deep Freeze tidak tersedia pada mode ini.' };
+    }
+
+    setDeepFreezeBusy(true);
+    try {
+      const result = await window.electronAPI.configureDeepFreeze(action, adminPassword);
+      if (result) setDeepFreezeStatus(result);
+      return result;
+    } catch (error) {
+      return { success: false, message: error?.message || 'Konfigurasi Deep Freeze gagal.' };
+    } finally {
+      setDeepFreezeBusy(false);
+    }
+  }, []);
+
+  const handleElevateDeepFreeze = useCallback(async (adminPassword) => {
+    if (!window.electronAPI?.relaunchAsAdministrator) {
+      return { success: false, message: 'Permintaan Administrator tidak tersedia pada mode ini.' };
+    }
+
+    setDeepFreezeBusy(true);
+    try {
+      return await window.electronAPI.relaunchAsAdministrator(adminPassword);
+    } catch (error) {
+      return { success: false, message: error?.message || 'Aplikasi tidak dapat dijalankan sebagai Administrator.' };
+    } finally {
+      setDeepFreezeBusy(false);
+    }
+  }, []);
+
+
   const formattedTime = time.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const formattedDate = time.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -566,11 +738,16 @@ export default function App() {
         settings={clientSettings}
         serverUrl={serverUrl || setupInput}
         updateStatus={updateStatus}
+        deepFreezeStatus={deepFreezeStatus}
+        deepFreezeBusy={deepFreezeBusy}
         onClose={() => setSettingsOpen(false)}
         onSave={handleSaveClientSettings}
         onCheck={handleCheckUpdate}
         onDownload={handleDownloadUpdate}
         onInstall={handleInstallUpdate}
+        onDeepFreezeRefresh={handleRefreshDeepFreeze}
+        onDeepFreezeConfigure={handleConfigureDeepFreeze}
+        onDeepFreezeElevate={handleElevateDeepFreeze}
         branding={branding}
       />
       {[MODE_SETUP, MODE_LOGIN].includes(mode) && (
@@ -643,7 +820,7 @@ export default function App() {
     };
 
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans" style={{ '--brand-primary': branding.primary_color, '--brand-accent': branding.accent_color }}>
+      <div data-labkom-screen="setup" className="min-h-screen bg-slate-900 flex items-center justify-center p-6 font-sans" style={{ '--brand-primary': branding.primary_color, '--brand-accent': branding.accent_color }}>
         {settingsLayer}
         <div className="w-full max-w-md bg-slate-800 border border-slate-700 rounded-3xl shadow-2xl p-10">
           <div className="flex flex-col items-center mb-8">
@@ -847,6 +1024,7 @@ export default function App() {
         <CheckConditionForm
           studentData={studentData}
           serverUrl={serverUrl}
+          serverOnline={serverOnline}
           pcName={pcName}
           onComplete={() => setMode(MODE_WIDGET)}
         />
@@ -861,6 +1039,7 @@ export default function App() {
         {sharedOverlays}
         <LogoutWidget
           studentData={studentData}
+          serverOnline={serverOnline}
           onRequestPostCheck={() => {
             window.electronAPI?.resizeWindow('checklist');
             setMode(MODE_POSTCHECK);
@@ -892,11 +1071,13 @@ export default function App() {
         <PostSessionCheck
           studentData={studentData}
           serverUrl={serverUrl}
+          serverOnline={serverOnline}
           onLogoutConfirmed={async () => {
             try {
               const sessionId = sessionStorage.getItem('session_id');
               await apiCall(`${serverUrl}/api/auth/logout`, {
                 method:  'POST',
+                timeoutMs: 2_000,
                 headers: { 'Content-Type': 'application/json' },
                 body:    JSON.stringify({ session_id: sessionId }),
               });
@@ -918,7 +1099,7 @@ export default function App() {
     <>
       {sharedOverlays}
 
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans" style={{ '--brand-primary': branding.primary_color, '--brand-accent': branding.accent_color }}>
+      <div data-labkom-screen="login" className="min-h-screen bg-slate-900 flex items-center justify-center p-4 relative overflow-hidden font-sans" style={{ '--brand-primary': branding.primary_color, '--brand-accent': branding.accent_color }}>
 
         {/* Dialog Admin (overlay di atas semua) */}
         {showAdminDialog && (

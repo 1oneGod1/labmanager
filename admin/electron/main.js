@@ -5,14 +5,26 @@
 //  3. Expose info IP LAN ke renderer via IPC
 //  4. Auto-update via electron-updater (GitHub Releases / generic server)
 
-const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, session, protocol, net } = require('electron');
 const path             = require('path');
+const { pathToFileURL } = require('url');
 const os               = require('os');
 const http             = require('http');
 const dgram            = require('dgram');
 const { spawn }        = require('child_process');
 const fs               = require('fs');
 const crypto           = require('crypto');
+
+const RENDERER_SCHEME = 'labkom';
+protocol.registerSchemesAsPrivileged([{
+  scheme: RENDERER_SCHEME,
+  privileges: {
+    standard: true,
+    secure: true,
+    supportFetchAPI: true,
+    corsEnabled: true,
+  },
+}]);
 
 // Gunakan nama produk untuk lokasi konfigurasi agar sesuai dokumentasi dan
 // mudah ditemukan oleh operator lab.
@@ -94,6 +106,34 @@ const log              = require('electron-log');
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 const allowDevTools = process.env.OPEN_ELECTRON_DEVTOOLS === '1';
+
+function registerRendererProtocol() {
+  const rendererRoot = path.resolve(app.getAppPath(), 'dist');
+  const normalizedRoot = rendererRoot.toLowerCase();
+  const rootPrefix = `${normalizedRoot}${path.sep}`;
+
+  protocol.handle(RENDERER_SCHEME, (request) => {
+    try {
+      const requestUrl = new URL(request.url);
+      if (requestUrl.host !== 'app') {
+        return new Response('Not found', { status: 404 });
+      }
+
+      const relativePath = decodeURIComponent(requestUrl.pathname).replace(/^\/+/, '') || 'index.html';
+      const resolvedPath = path.resolve(rendererRoot, relativePath);
+      const normalizedPath = resolvedPath.toLowerCase();
+      if (normalizedPath !== normalizedRoot && !normalizedPath.startsWith(rootPrefix)) {
+        log.warn(`[RENDERER PROTOCOL] Path ditolak: ${requestUrl.pathname}`);
+        return new Response('Forbidden', { status: 403 });
+      }
+
+      return net.fetch(pathToFileURL(resolvedPath).toString());
+    } catch (error) {
+      log.error('[RENDERER PROTOCOL] Gagal melayani asset:', error);
+      return new Response('Internal error', { status: 500 });
+    }
+  });
+}
 
 // ─── Auto-Updater Config ────────────────────────────────────────────────────
 // Log ke file: %USERPROFILE%\AppData\Roaming\LabKom Admin\logs\main.log
@@ -402,6 +442,7 @@ function createWindow() {
     minHeight: 600,
     title: 'LabKom Admin – Dashboard Manajemen Lab Komputer',
     show: false,  // Jangan tampil dulu, tunggu ready
+    backgroundColor: '#08111f',
     webPreferences: {
       preload:          path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -418,13 +459,61 @@ function createWindow() {
   mainWindow.setMenuBarVisibility(false);
   mainWindow.removeMenu();
 
+  // Rekam semua kegagalan renderer sebelum navigasi dimulai.
+  mainWindow.webContents.on('console-message', (_event, detailsOrLevel, legacyMessage, legacyLine, legacySourceId) => {
+    const details = typeof detailsOrLevel === 'object'
+      ? detailsOrLevel
+      : {
+          level: ['verbose', 'info', 'warning', 'error'][detailsOrLevel] || 'info',
+          message: legacyMessage,
+          lineNumber: legacyLine,
+          sourceId: legacySourceId,
+        };
+    const location = details.sourceId
+      ? ` (${details.sourceId}:${details.lineNumber || 0})`
+      : '';
+    const writer = details.level === 'error' ? log.error : details.level === 'warning' ? log.warn : log.info;
+    writer(`[RENDERER CONSOLE] ${details.message || ''}${location}`);
+  });
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    log.error(`[RENDERER PRELOAD] ${preloadPath}:`, error);
+  });
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    if (isMainFrame) log.error(`[RENDERER LOAD] ${errorCode} ${errorDescription}: ${validatedURL}`);
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    log.error('[RENDERER GONE]', details);
+  });
+  mainWindow.webContents.on('unresponsive', () => {
+    log.error('[RENDERER] Window tidak merespons.');
+  });
+
+  let windowRevealed = false;
+  const revealWindow = () => {
+    if (windowRevealed || !mainWindow || mainWindow.isDestroyed()) return;
+    windowRevealed = true;
+    mainWindow.show();
+    mainWindow.focus();
+  };
+
+  // Listener harus terpasang sebelum navigasi; protokol internal dapat selesai
+  // memuat sangat cepat dan event ready-to-show tidak boleh terlewat.
+  mainWindow.once('ready-to-show', revealWindow);
+  mainWindow.webContents.once('did-finish-load', revealWindow);
+
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5174');
+    mainWindow.loadURL('http://localhost:5174').catch((error) => {
+      log.error('[RENDERER LOAD] Gagal membuka dev server:', error);
+    });
     if (allowDevTools) {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    const rendererEntry = `${RENDERER_SCHEME}://app/index.html`;
+    log.info(`[RENDERER LOAD] Membuka ${rendererEntry}`);
+    mainWindow.loadURL(rendererEntry).catch((error) => {
+      log.error('[RENDERER LOAD] Gagal membuka bundle produksi:', error);
+    });
   }
 
   // Buka link eksternal di browser default, bukan di Electron
@@ -436,7 +525,7 @@ function createWindow() {
     return { action: 'deny' };
   });
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    const allowed = url.startsWith('file://') || (isDev && url.startsWith('http://localhost:5174'));
+    const allowed = url.startsWith(`${RENDERER_SCHEME}://app/`) || (isDev && url.startsWith('http://localhost:5174'));
     if (!allowed) event.preventDefault();
   });
 
@@ -473,17 +562,23 @@ function createWindow() {
       mainWindow.center();
     }
   });
-
-  // Tampilkan window saat sudah siap di-render
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
-    mainWindow.focus();
-  });
 }
 
 // ─── IPC Handlers ───────────────────────────────────────────────────────────
 
 // Renderer minta info server (IP, port, status)
+ipcMain.on('renderer-ready', () => {
+  log.info('[RENDERER] React berhasil dirender.');
+});
+
+ipcMain.on('renderer-error', (_event, details) => {
+  log.error('[RENDERER ERROR]', {
+    message: details?.message || 'Unknown renderer error',
+    stack: details?.stack || '',
+    source: details?.source || '',
+  });
+});
+
 ipcMain.handle('get-server-info', () => ({
   ip:     getLanIp(),
   allIps: getAllLanIps(),
@@ -686,6 +781,7 @@ ipcMain.handle('export-reports-pdf', async () => {
 });
 
 app.whenReady().then(async () => {
+  if (!isDev) registerRendererProtocol();
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   session.defaultSession.setPermissionCheckHandler(() => false);
   await startServer();   // ← Jalankan/detect backend terlebih dahulu

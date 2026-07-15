@@ -16,7 +16,7 @@ const CHECK_ITEMS = [
 
 const initialChecks = Object.fromEntries(CHECK_ITEMS.map(({ key }) => [key, { status: null, note: '' }]));
 
-export default function CheckConditionForm({ studentData, serverUrl, pcName, onComplete }) {
+export default function CheckConditionForm({ studentData, serverUrl, serverOnline = true, pcName, onComplete }) {
   const [checks, setChecks] = useState(initialChecks);
   const [confirmed, setConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,12 +39,17 @@ export default function CheckConditionForm({ studentData, serverUrl, pcName, onC
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!isFormValid || isSubmitting) return;
+    if (!serverOnline) {
+      setSubmitError('Server sedang terputus. Tunggu koneksi pulih; seluruh isian tetap tersimpan di layar.');
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError('');
 
     try {
       const response = await apiCall(`${serverUrl}/api/checks`, {
         method: 'POST',
+        timeoutMs: 8_000,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionStorage.getItem('session_id') || null,
@@ -153,6 +158,9 @@ export default function CheckConditionForm({ studentData, serverUrl, pcName, onC
           <span>Saya sudah memeriksa seluruh perangkat dan informasi di atas benar.</span>
         </label>
         {submitError && <span className="student-error">{submitError}</span>}
+        {!serverOnline && (
+          <span className="student-error">Server terputus. Isian tetap aman dan dapat dikirim ulang setelah koneksi pulih.</span>
+        )}
         <button className="student-submit" type="submit" form="pre-condition-form" disabled={!isFormValid || isSubmitting}>
           {isSubmitting ? <><Loader2 className="animate-spin" />Menyimpan...</> : <>Mulai sesi<ArrowRight /></>}
         </button>

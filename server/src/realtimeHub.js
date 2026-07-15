@@ -20,6 +20,52 @@ const { normalizeControlSettings } = require('./services/controlPolicyService');
 
 const screenWatchers = new Map();
 const SYSTEM_COMMANDS = new Set(['lock', 'sleep', 'restart', 'shutdown']);
+const DEEP_FREEZE_ACTIONS = new Set(['status', 'freeze', 'unfreeze']);
+const deepFreezeStatusByPc = new Map();
+
+function normalizeDeepFreezeStatusPayload(payload = {}) {
+  const state = /^[a-z_]{2,40}$/.test(String(payload.state || ''))
+    ? String(payload.state)
+    : 'error';
+  const action = DEEP_FREEZE_ACTIONS.has(String(payload.action || '').toLowerCase())
+    ? String(payload.action).toLowerCase()
+    : 'status';
+  const commandId = /^freeze_[A-Za-z0-9_-]{8,80}$/.test(String(payload.command_id || ''))
+    ? String(payload.command_id)
+    : null;
+  const boundedNumber = (value) => Math.min(1_000_000, Math.max(0, Number(value) || 0));
+
+  return {
+    success: payload.success !== false,
+    state,
+    action,
+    command_id: commandId,
+    supported: payload.supported === true,
+    feature_installed: payload.feature_installed === true,
+    provider_ready: payload.provider_ready === true,
+    is_admin: payload.is_admin === true,
+    can_configure: payload.can_configure === true,
+    current_enabled: payload.current_enabled === true,
+    next_enabled: payload.next_enabled === true,
+    current_protected: payload.current_protected === true,
+    next_protected: payload.next_protected === true,
+    current_frozen: payload.current_frozen === true,
+    next_frozen: payload.next_frozen === true,
+    restart_required: payload.restart_required === true,
+    requires_admin: payload.requires_admin === true,
+    overlay_consumption_mb: boundedNumber(payload.overlay_consumption_mb),
+    overlay_available_mb: boundedNumber(payload.overlay_available_mb),
+    product_name: String(payload.product_name || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 160),
+    system_drive: /^[A-Za-z]:$/.test(String(payload.system_drive || '')) ? String(payload.system_drive).toUpperCase() : null,
+    message: String(payload.message || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 300),
+    technical_error: String(payload.technical_error || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 500),
+    warnings: Array.isArray(payload.warnings)
+      ? payload.warnings.slice(0, 8).map((value) => String(value).replace(/[\u0000-\u001F]/g, ' ').slice(0, 240))
+      : [],
+    observed_at: Number(payload.observed_at) || Date.now(),
+  };
+}
+
 
 function getClientChannel(socket) {
   return socket.data.channel === 'main' ? 'main' : 'renderer';
@@ -72,9 +118,10 @@ function attachRealtimeHub(httpServer) {
   const io = new Server(httpServer, {
     cors: {
       origin: (origin, callback) => {
-        // null origin = Electron file:// protocol
+        // Tanpa origin digunakan request same-origin/non-browser yang sah.
         if (!origin) return callback(null, true);
         const ALLOWED = [
+          /^labkom:\/\/app$/,
           /^http:\/\/localhost(:\d+)?$/,
           /^http:\/\/127\.0\.0\.1(:\d+)?$/,
           /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$/,
@@ -118,6 +165,7 @@ function attachRealtimeHub(httpServer) {
     if (socket.data.role === 'admin') {
       socket.join('admins');
       socket.emit('screens:snapshot', getActiveScreens());
+      socket.emit('deep-freeze:snapshot', [...deepFreezeStatusByPc.values()]);
 
       const setWatchTarget = (nextPcName = null) => {
         const previousPcName = normalizePcName(socket.data.watch_pc_name);
@@ -206,6 +254,23 @@ function attachRealtimeHub(httpServer) {
           requested_at: new Date().toISOString(),
         };
         const count = emitToClientChannel(io, 'main', 'system:command', payload, target);
+        callback?.({ success: true, count, command_id: payload.id });
+      });
+
+      socket.on('admin:deep-freeze', (data = {}, callback) => {
+        const action = String(data.action || '').toLowerCase();
+        const target = data.target && data.target !== 'all' ? normalizePcName(data.target) : 'all';
+        if (!DEEP_FREEZE_ACTIONS.has(action) || !target) {
+          callback?.({ success: false, error: 'Perintah Deep Freeze tidak valid.' });
+          return;
+        }
+        const payload = {
+          id: `freeze_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          action,
+          target,
+          requested_at: new Date().toISOString(),
+        };
+        const count = emitToClientChannel(io, 'main', 'deep-freeze:command', payload, target);
         callback?.({ success: true, count, command_id: payload.id });
       });
 
@@ -431,6 +496,21 @@ function attachRealtimeHub(httpServer) {
         acknowledged_at: Date.now(),
       });
     });
+    socket.on('client:deep-freeze-status', (payload = {}) => {
+      if (getClientChannel(socket) !== 'main') return;
+      const pcName = normalizePcName(socket.data.pc_name);
+      if (!pcName) return;
+
+      const status = {
+        ...normalizeDeepFreezeStatusPayload(payload),
+        pc_name: pcName,
+        online: true,
+        received_at: Date.now(),
+      };
+      deepFreezeStatusByPc.set(pcName, status);
+      io.to('admins').emit('client:deep-freeze-status', status);
+    });
+
 
     socket.on('client:policy-status', (payload = {}) => {
       if (getClientChannel(socket) !== 'main') return;
@@ -478,6 +558,12 @@ function attachRealtimeHub(httpServer) {
         is_online: false,
         last_seen: Date.now(),
       });
+      const previousFreezeStatus = deepFreezeStatusByPc.get(pcName);
+      if (previousFreezeStatus) {
+        const offlineStatus = { ...previousFreezeStatus, online: false, received_at: Date.now() };
+        deepFreezeStatusByPc.set(pcName, offlineStatus);
+        io.to('admins').emit('client:deep-freeze-status', offlineStatus);
+      }
     });
   });
 
@@ -496,4 +582,4 @@ async function saveActivityToDatabase(activity) {
   await firebaseService.activities.create(activity);
 }
 
-module.exports = { attachRealtimeHub };
+module.exports = { attachRealtimeHub, normalizeDeepFreezeStatusPayload };

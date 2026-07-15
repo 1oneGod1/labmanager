@@ -1,6 +1,16 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Diagnostik startup renderer. Pesan hanya dikirim ke main process dan
+  // dicatat oleh electron-log agar kegagalan produksi tidak lagi menjadi
+  // layar putih tanpa petunjuk.
+  reportRendererReady: () => ipcRenderer.send('renderer-ready'),
+  reportRendererError: (details) => ipcRenderer.send('renderer-error', {
+    message: String(details?.message || 'Unknown renderer error').slice(0, 2000),
+    stack: String(details?.stack || '').slice(0, 8000),
+    source: String(details?.source || '').slice(0, 1000),
+  }),
+
   // Info server yang sedang berjalan di PC ini
   getServerInfo:    ()     => ipcRenderer.invoke('get-server-info'),
   restartServer:    ()     => ipcRenderer.invoke('restart-server'),

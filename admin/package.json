@@ -1,11 +1,12 @@
 {
   "name": "labkom-admin",
-  "version": "1.2.0",
+  "version": "1.2.1784045362",
   "description": "Dashboard administrasi dan pemantauan laboratorium komputer",
   "author": "LabKom",
   "type": "module",
   "main": "electron/main.js",
   "scripts": {
+    "test": "node scripts/verify-api-config.mjs",
     "dev:react": "vite --port 5174",
     "build:react": "vite build",
     "verify:packaged-server": "node scripts/verify-packaged-server.cjs",

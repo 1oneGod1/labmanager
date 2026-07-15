@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react';
 import { X, User, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { adminJsonRequest } from '../apiConfig.js';
 
-const API = (typeof window !== 'undefined' && window.location.protocol === 'file:')
-  ? 'http://localhost:3001'
-  : '';
 
 /**
  * Modal untuk Tambah / Edit Siswa
@@ -49,32 +47,26 @@ export default function StudentModal({ student, onClose, onSaved }) {
     }
 
     setLoading(true);
+    setError('');
     try {
-      const url    = isEdit ? `${API}/api/students/${student.id}` : `${API}/api/students`;
+      const requestPath = isEdit ? `/api/students/${student.id}` : '/api/students';
       const method = isEdit ? 'PUT' : 'POST';
 
       const body = { ...form, is_active: parseInt(form.is_active) };
       if (isEdit && !form.password) delete body.password;
 
-      const res = await fetch(url, {
+      const { response, data } = await adminJsonRequest(requestPath, {
         method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(sessionStorage.getItem('admin_token')
-            ? { Authorization: `Bearer ${sessionStorage.getItem('admin_token')}` }
-            : {}),
-        },
         body: JSON.stringify(body),
       });
-      const data = await res.json();
 
-      if (!data.success) {
-        setError(data.message || 'Gagal menyimpan data.');
+      if (!response.ok || !data.success) {
+        setError(data.message || `Gagal menyimpan data (HTTP ${response.status}).`);
       } else {
         onSaved();
       }
-    } catch (e) {
-      setError('Koneksi ke server gagal.');
+    } catch (requestError) {
+      setError(requestError.message || 'Koneksi ke backend Admin gagal.');
     } finally {
       setLoading(false);
     }

@@ -15,7 +15,7 @@ const CHECK_ITEMS = [
 
 const initialChecks = Object.fromEntries(CHECK_ITEMS.map(({ key }) => [key, { status: null, note: '' }]));
 
-export default function PostSessionCheck({ studentData, serverUrl, onLogoutConfirmed }) {
+export default function PostSessionCheck({ studentData, serverUrl, serverOnline = true, onLogoutConfirmed }) {
   const [checks, setChecks] = useState(initialChecks);
   const [confirmed, setConfirmed] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -37,10 +37,16 @@ export default function PostSessionCheck({ studentData, serverUrl, onLogoutConfi
     if (!isFormValid || isSubmitting) return;
     setIsSubmitting(true);
     setSubmitError('');
+    if (!serverOnline) {
+      setSubmitError('Server terputus; sesi akan ditutup secara lokal.');
+      setTimeout(() => onLogoutConfirmed(), 500);
+      return;
+    }
 
     try {
       const response = await apiCall(`${serverUrl}/api/checks`, {
         method: 'POST',
+        timeoutMs: 6_000,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionStorage.getItem('session_id') || null,
@@ -158,6 +164,9 @@ export default function PostSessionCheck({ studentData, serverUrl, onLogoutConfi
           <span>Saya sudah memeriksa seluruh perangkat dan siap mengakhiri sesi.</span>
         </label>
         {submitError && <span className="student-error">{submitError}</span>}
+        {!serverOnline && (
+          <span className="student-error">Server terputus. Proses keluar tetap akan diselesaikan secara lokal.</span>
+        )}
         <button className="student-submit" type="submit" form="post-condition-form" disabled={!isFormValid || isSubmitting}>
           {isSubmitting ? <><Loader2 className="animate-spin" />Menyimpan...</> : <>Konfirmasi & keluar<LogOut /></>}
         </button>

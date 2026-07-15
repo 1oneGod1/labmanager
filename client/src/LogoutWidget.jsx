@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   User, Monitor, Clock, LogOut, ChevronDown, ChevronUp,
-  Send, X, MessageCircle, AlertTriangle, Flag, BellRing,
+  Send, X, MessageCircle, AlertTriangle, Flag, BellRing, Wifi, WifiOff,
 } from 'lucide-react';
 import { apiCall } from './api.js';
 
@@ -13,7 +13,7 @@ function resizeElectron(mode) {
   window.electronAPI?.resizeWindow(mode);
 }
 
-export default function LogoutWidget({ studentData, onRequestPostCheck, onLogoutComplete }) {
+export default function LogoutWidget({ studentData, serverOnline = true, onRequestPostCheck, onLogoutComplete }) {
   const [sessionTime,      setSessionTime]      = useState(0);
   const [isMinimized,      setIsMinimized]      = useState(false);
   const [isTeacherMode,    setIsTeacherMode]    = useState(false);
@@ -117,6 +117,7 @@ export default function LogoutWidget({ studentData, onRequestPostCheck, onLogout
       const sessionId = sessionStorage.getItem('session_id');
       const res = await apiCall(`${SERVER_URL}/api/auth/logout`, {
         method:  'POST',
+        timeoutMs: 3_000,
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ session_id: sessionId }),
       });
@@ -203,13 +204,14 @@ export default function LogoutWidget({ studentData, onRequestPostCheck, onLogout
               <Monitor className="w-4 h-4 text-white" />
             </div>
             <div>
-              <h3 className="text-white font-bold text-sm leading-tight">
+              <h3 className="flex items-center gap-1.5 text-white font-bold text-sm leading-tight">
                 {studentData?.pc_name || 'PC-LAB'}
+                {serverOnline ? <Wifi className="h-3.5 w-3.5 text-emerald-200" /> : <WifiOff className="h-3.5 w-3.5 text-amber-200" />}
               </h3>
               {isMinimized ? (
                 <p className="text-blue-100 text-xs font-mono">{formatTime(sessionTime)}</p>
               ) : (
-                <p className="text-blue-100 text-xs">Sesi Aktif</p>
+                <p className="text-blue-100 text-xs">{serverOnline ? 'Sesi Aktif' : 'Server terputus - mencoba lagi'}</p>
               )}
             </div>
           </div>
