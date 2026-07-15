@@ -37,8 +37,10 @@ function buildPcCard({
   isUnmapped = false,
 }) {
   const online = Boolean(presence?.is_online);
+  const sleeping = presence?.power_state === 'sleeping';
   let status = 'offline';
-  if (session) status = 'active';
+  if (sleeping) status = 'sleeping';
+  else if (session && online) status = 'active';
   else if (online) status = 'locked';
 
   const boundHostname = normalizePcName(binding?.bound_hostname) || null;
@@ -66,6 +68,9 @@ function buildPcCard({
     mac: presence?.mac || boundMac || null,
     last_seen: presence?.last_seen || null,
     is_online: online,
+    power_state: presence?.power_state || 'awake',
+    power_state_changed_at: presence?.power_state_changed_at || null,
+    session_state: presence?.session_state || (session ? 'active' : 'login'),
     binding_hostname: boundHostname,
     binding_mac: boundMac,
     binding_ip: binding?.last_known_ip || null,
@@ -287,4 +292,5 @@ module.exports = {
   clearMapping,
   forceLogoutPc,
   forceLogoutAll,
+  buildPcCard,
 };

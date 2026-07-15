@@ -299,26 +299,25 @@ function attachRealtimeHub(httpServer) {
       });
 
       // ── Attention Mode (Blank Screen) ──────────────────────────
-      socket.on('admin:attention-mode', ({ enabled, message, target } = {}) => {
+      socket.on('admin:attention-mode', ({ enabled, message, target } = {}, callback) => {
         const payload = {
           enabled: Boolean(enabled),
           message: message || 'Mohon perhatian ke instruktur',
           timestamp: Date.now(),
         };
 
-        if (target && target !== 'all') {
-          // Send to specific PC
-          emitToClientChannel(io, 'renderer', 'attention-mode', payload, target);
-        } else {
-          emitToClientChannel(io, 'renderer', 'attention-mode', payload);
-        }
+        const normalizedTarget = target && target !== 'all' ? target : 'all';
+        const delivered = emitToClientChannel(
+          io, 'renderer', 'attention-mode', payload, normalizedTarget,
+        );
 
         // Notify other admins
         socket.to('admins').emit('attention-mode-status', {
           ...payload,
-          target: target || 'all',
+          target: normalizedTarget,
           admin_id: socket.id,
         });
+        callback?.({ success: !payload.enabled || delivered > 0, count: delivered });
       });
 
       socket.on('disconnect', () => {
@@ -358,6 +357,8 @@ function attachRealtimeHub(httpServer) {
         mac: payload.mac,
         ip: payload.ip,
         student_name: payload.student_name,
+        power_state: payload.power_state || (['socket-hello', 'socket-heartbeat'].includes(source) ? 'awake' : undefined),
+        session_state: payload.session_state,
         socket_id: socket.id,
         source,
       });
@@ -370,6 +371,9 @@ function attachRealtimeHub(httpServer) {
         mac: entry.mac || null,
         student_name: entry.student_name || null,
         is_online: true,
+        power_state: entry.power_state,
+        session_state: entry.session_state,
+        power_state_changed_at: entry.power_state_changed_at,
         last_seen: entry.last_seen,
       });
       return entry;
@@ -378,11 +382,18 @@ function attachRealtimeHub(httpServer) {
     bindClientRoom(socket.data.claimed_pc_name);
 
     socket.on('client:hello', (payload = {}) => {
+      if (getClientChannel(socket) !== 'main') return;
       updatePresence(payload, 'socket-hello');
     });
 
     socket.on('client:heartbeat', (payload = {}) => {
+      if (getClientChannel(socket) !== 'main') return;
       updatePresence(payload, 'socket-heartbeat');
+    });
+
+    socket.on('client:power-state', (payload = {}) => {
+      if (getClientChannel(socket) !== 'main') return;
+      updatePresence(payload, 'socket-power-state');
     });
 
     socket.on('client:screen', (payload = {}) => {
@@ -566,13 +577,17 @@ function attachRealtimeHub(httpServer) {
       if (!pcName) return;
       if (getClientChannel(socket) !== 'main') return;
 
-      markClientDisconnected(pcName, socket.id);
+      const disconnectedEntry = markClientDisconnected(pcName, socket.id);
+      if (!disconnectedEntry) return;
       if (removeScreen(pcName)) {
         io.to('admins').emit('screen:remove', { pc_name: pcName });
       }
       io.to('admins').emit('presence:update', {
         pc_name: pcName,
         is_online: false,
+        power_state: disconnectedEntry.power_state || 'awake',
+        session_state: disconnectedEntry.session_state || 'login',
+        power_state_changed_at: disconnectedEntry.power_state_changed_at || null,
         last_seen: Date.now(),
       });
       const previousFreezeStatus = deepFreezeStatusByPc.get(pcName);

@@ -584,6 +584,9 @@ export default function AdminDashboard() {
 
   // ── Monitoring ────────────────────────────────────────────────────────
   const [pcs,        setPcs]        = useState(DEMO_MODE ? DEMO_PCS : []);
+  const labPcOptions = pcs
+    .filter((pc) => !pc.is_unmapped)
+    .map((pc) => ({ id: pc.id, label: pc.label || pc.id }));
   const [pcsLoading, setPcsLoading] = useState(!DEMO_MODE);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [selectedPc,      setSelectedPc]      = useState(null);
@@ -1806,9 +1809,6 @@ export default function AdminDashboard() {
     const activeCount  = pcs.filter(p => p.status === 'active').length;
     const lockedCount  = pcs.filter(p => p.status === 'locked').length;
     const offlineCount = pcs.filter(p => p.status === 'offline').length;
-    const labPcOptions = pcs
-      .filter((p) => !p.is_unmapped)
-      .map((p) => ({ id: p.id, label: p.label || p.id }));
 
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -2565,8 +2565,17 @@ export default function AdminDashboard() {
 
   const activePcs = pcs.filter((pc) => pc.status === 'active');
   const lockedPcs = pcs.filter((pc) => pc.status === 'locked');
-  const onlineCount = pcs.filter((pc) => pc.status !== 'offline').length;
+  const sleepingPcs = pcs.filter((pc) => pc.status === 'sleeping');
+  const onlineCount = activePcs.length + lockedPcs.length;
   const offlineCount = pcs.filter((pc) => pc.status === 'offline').length;
+  const canReachPc = (pc) => pc?.status === 'active' || pc?.status === 'locked';
+  const getPcStatusLabel = (pc) => ({
+    active: 'Digunakan',
+    locked: 'Menunggu login',
+    sleeping: 'Mode sleep',
+    offline: 'Offline',
+  })[pc?.status] || 'Tidak diketahui';
+
   const activeClassName = 'Lab Aktif';
 
   const activityFeed = [
@@ -2760,8 +2769,8 @@ export default function AdminDashboard() {
           <img src={screen.image} alt={`Layar ${pc.id}`} />
         ) : (
           <div className="labkom-pc-empty">
-            {pc.status === 'offline' ? <WifiOff /> : <Monitor />}
-            <span>{pc.status === 'offline' ? 'Offline' : 'Layar belum tersedia'}</span>
+            {pc.status === 'offline' ? <WifiOff /> : pc.status === 'sleeping' ? <Moon /> : <Monitor />}
+            <span>{pc.status === 'sleeping' ? 'Mode sleep' : pc.status === 'offline' ? 'Offline' : 'Layar belum tersedia'}</span>
           </div>
         )}
       </div>
@@ -2785,7 +2794,7 @@ export default function AdminDashboard() {
           ['Aktif', activePcs.length, 'active'],
           ['Menunggu', lockedPcs.length, 'locked'],
           ['Bantuan', 0, 'help'],
-          ['Terkunci', lockedPcs.length, 'locked'],
+          ['Sleep', sleepingPcs.length, 'sleeping'],
           ['Peringatan', 0, 'alert'],
           ['Offline', offlineCount, 'offline'],
         ].map(([label, value, status]) => (
@@ -2832,17 +2841,18 @@ export default function AdminDashboard() {
         </div>
         <div className="labkom-selected-preview">
           <div className="frame">
-            {screen?.image ? <img src={screen.image} alt={`Layar ${pc.id}`} /> : <div className="labkom-remote-empty"><Monitor /><span>Layar belum tersedia</span></div>}
+            {screen?.image ? <img src={screen.image} alt={`Layar ${pc.id}`} /> : <div className="labkom-remote-empty">{pc.status === 'sleeping' ? <Moon /> : <Monitor />}<span>{pc.status === 'sleeping' ? 'Komputer sedang sleep' : 'Layar belum tersedia'}</span></div>}
           </div>
         </div>
         <div className="labkom-selected-meta">
-          <div><span>Status</span><strong>{pc.status}</strong></div>
+          <div><span>Status</span><strong>{getPcStatusLabel(pc)}</strong></div>
           <div><span>Alamat IP</span><strong>{pc.ip || '—'}</strong></div>
+          <div><span>Terakhir terlihat</span><strong>{pc.last_seen ? new Date(pc.last_seen).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '?'}</strong></div>
           <div><span>Waktu login</span><strong>{pc.loginTime || '—'}</strong></div>
           <div><span>Durasi</span><strong>{pc.duration || '—'}</strong></div>
           <div><span>Kebijakan</span><strong>{policyStatusByPc[pc.actual_pc_name || pc.id] ? 'Diterapkan' : realtimeConnected ? 'Menunggu ack' : 'Offline'}</strong></div>
         </div>
-        {(pc.is_unmapped || pc.binding_hostname || pc.binding_mac || (pc.status === 'offline' && wakeMac)) && (
+        {(pc.is_unmapped || pc.binding_hostname || pc.binding_mac || (!canReachPc(pc) && wakeMac)) && (
           <section className="labkom-panel-section !mt-0">
             <header><span>Perangkat fisik</span><span>{pc.is_unmapped ? 'belum dipetakan' : 'terhubung'}</span></header>
             {pc.is_unmapped ? (
@@ -2870,7 +2880,7 @@ export default function AdminDashboard() {
                 )}
               </div>
             )}
-            {pc.status === 'offline' && wakeMac && (
+            {!canReachPc(pc) && wakeMac && (
               <button onClick={() => handleWakeOnLan(wakeMac, pc.id)} disabled={wolBusy[pc.id]} style={{ width: 'calc(100% - 1.5rem)' }} className="labkom-action m-3 mt-0">
                 {wolBusy[pc.id] ? <Loader2 className="w-4 h-4 animate-spin" /> : <Radio className="w-4 h-4" />}<span>Wake-on-LAN</span>
               </button>
@@ -2880,21 +2890,21 @@ export default function AdminDashboard() {
         <DeepFreezeControls
           pcName={mappingKey}
           status={deepFreezeStatusByPc[mappingKey]}
-          offline={pc.status === 'offline'}
+          offline={!canReachPc(pc)}
           busy={deepFreezeBusy[mappingKey] === true}
           onRefresh={() => requestDeepFreeze('status', mappingKey)}
           onRequest={(action) => requestDeepFreeze(action, mappingKey)}
         />
         <div className="labkom-quick-grid">
-          <button onClick={() => openRemoteForPc(pc)}><Eye />Remote</button>
-          <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'lock', target: pc.actual_pc_name || pc.id, label: 'Kunci Windows' })}><Lock />Kunci</button>
-          <button disabled={pc.status === 'offline'} className={attentionTargets[pc.actual_pc_name || pc.id] ? 'is-active' : ''} onClick={() => toggleTargetAttention(pc)}><Moon />{attentionTargets[pc.actual_pc_name || pc.id] ? 'Lepas blank' : 'Blank'}</button>
+          <button disabled={!canReachPc(pc)} onClick={() => openRemoteForPc(pc)}><Eye />Remote</button>
+          <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'lock', target: pc.actual_pc_name || pc.id, label: 'Kunci Windows' })}><Lock />Kunci</button>
+          <button disabled={!canReachPc(pc)} className={attentionTargets[pc.actual_pc_name || pc.id] ? 'is-active' : ''} onClick={() => toggleTargetAttention(pc)}><Moon />{attentionTargets[pc.actual_pc_name || pc.id] ? 'Lepas blank' : 'Blank'}</button>
           <button onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle />Pesan</button>
           <button onClick={() => setActiveTab('control')}><Globe />Buka web</button>
           <button onClick={() => setActiveTab('files')}><Upload />Kirim file</button>
-          <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'sleep', target: pc.actual_pc_name || pc.id, label: 'Sleep' })}><Moon />Sleep</button>
-          <button disabled={pc.status === 'offline'} onClick={() => setConfirmSystemCommand({ command: 'restart', target: pc.actual_pc_name || pc.id, label: 'Restart' })}><RefreshCw />Restart</button>
-          <button disabled={pc.status === 'offline'} className="is-danger" onClick={() => setConfirmSystemCommand({ command: 'shutdown', target: pc.actual_pc_name || pc.id, label: 'Shutdown' })}><Power />Shutdown</button>
+          <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'sleep', target: pc.actual_pc_name || pc.id, label: 'Sleep' })}><Moon />Sleep</button>
+          <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'restart', target: pc.actual_pc_name || pc.id, label: 'Restart' })}><RefreshCw />Restart</button>
+          <button disabled={!canReachPc(pc)} className="is-danger" onClick={() => setConfirmSystemCommand({ command: 'shutdown', target: pc.actual_pc_name || pc.id, label: 'Shutdown' })}><Power />Shutdown</button>
           <button onClick={() => downloadScreenSnapshot(pc)}><ImageIcon />Snapshot</button>
           <button className="is-danger" onClick={() => handleForceLogout(pc)}><LogOut />Log off</button>
         </div>
@@ -2916,7 +2926,8 @@ export default function AdminDashboard() {
             <label className="labkom-search"><Search className="w-4 h-4" /><input value={monitorSearch} onChange={(event) => setMonitorSearch(event.target.value)} placeholder="Cari siswa atau PC..." /></label>
             {[
               ['all', `Semua ${pcs.length}`], ['active', `Aktif ${activePcs.length}`],
-              ['locked', `Menunggu ${lockedPcs.length}`], ['offline', `Offline ${offlineCount}`],
+              ['locked', `Menunggu ${lockedPcs.length}`], ['sleeping', `Sleep ${sleepingPcs.length}`],
+              ['offline', `Offline ${offlineCount}`],
             ].map(([id, label]) => <button key={id} className={`labkom-chip ${monitorFilter === id ? 'is-active' : ''}`} onClick={() => setMonitorFilter(id)}>{label}</button>)}
             <div className="labkom-filter-actions">
               <button className="labkom-icon-button !min-h-8 !px-2" onClick={() => fetchPcs()} title="Muat ulang"><RefreshCw className={`w-4 h-4 ${pcsLoading ? 'animate-spin' : ''}`} /></button>
@@ -2932,13 +2943,13 @@ export default function AdminDashboard() {
               {filteredPcs.map((pc) => (
                 <button key={pc.id} onClick={() => setMonitorSelectedPc(pc)} className={`labkom-pc-card ${pc.status === 'offline' ? 'is-offline' : ''} ${monitorSelectedPc?.id === pc.id ? 'is-selected' : ''}`}>
                   {renderDesignPcPreview(pc)}
-                  <div className="labkom-pc-meta"><div className="labkom-pc-title"><i className={`labkom-status-dot is-${pc.status}`} /><strong>{getPcStudentName(pc)}</strong></div><span className="labkom-pc-id">{pc.id}</span></div>
+                  <div className="labkom-pc-meta"><div className="labkom-pc-title"><i className={`labkom-status-dot is-${pc.status}`} /><strong>{getPcStudentName(pc)}</strong></div><span className="labkom-pc-id">{pc.id} ? {getPcStatusLabel(pc)}</span></div>
                 </button>
               ))}
             </div>
           )}
         </div>
-        {monitorSelectedPc ? renderDesignSelectedPanel(monitorSelectedPc) : renderDesignOverviewPanel()}
+        {monitorSelectedPc ? renderDesignSelectedPanel(pcs.find((pc) => pc.id === monitorSelectedPc.id) || monitorSelectedPc) : renderDesignOverviewPanel()}
       </div>
     );
   };
@@ -2960,8 +2971,8 @@ export default function AdminDashboard() {
           <div className="labkom-remote-screen">{remoteScreen?.image ? <img src={remoteScreen.image} alt={`Remote ${remoteScreen.pc_name}`} /> : <div className="labkom-remote-empty"><Monitor /><span>Belum ada frame layar yang diterima.</span></div>}</div>
           <div className="labkom-remote-controls">
             <button className="labkom-action labkom-action-primary" disabled={!remotePc || !remoteScreen?.image} onClick={() => remotePc && downloadScreenSnapshot(remotePc)}><ImageIcon className="w-4 h-4" /><span>Snapshot</span></button>
-            <button className="labkom-action" disabled={!remotePc || remotePc.status === 'offline'} onClick={() => remotePc && setConfirmSystemCommand({ command: 'lock', target: remotePc.actual_pc_name || remotePc.id, label: 'Kunci Windows' })}><Lock className="w-4 h-4" /><span>Kunci Windows</span></button>
-            <button className={`labkom-action ${remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'is-active' : ''}`} disabled={!remotePc || remotePc.status === 'offline'} onClick={() => remotePc && toggleTargetAttention(remotePc)}><Moon className="w-4 h-4" /><span>{remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'Lepas blank' : 'Blank'}</span></button>
+            <button className="labkom-action" disabled={!canReachPc(remotePc)} onClick={() => remotePc && setConfirmSystemCommand({ command: 'lock', target: remotePc.actual_pc_name || remotePc.id, label: 'Kunci Windows' })}><Lock className="w-4 h-4" /><span>Kunci Windows</span></button>
+            <button className={`labkom-action ${remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'is-active' : ''}`} disabled={!canReachPc(remotePc)} onClick={() => remotePc && toggleTargetAttention(remotePc)}><Moon className="w-4 h-4" /><span>{remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'Lepas blank' : 'Blank'}</span></button>
             <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle className="w-4 h-4" /><span>Pesan</span></button>
             <button className="labkom-action" onClick={() => fetchScreens()}><RefreshCw className="w-4 h-4" /><span>Refresh</span></button>
           </div>
@@ -3092,7 +3103,7 @@ export default function AdminDashboard() {
             <p className="text-[11px] text-slate-400 text-center py-4">Belum ada siswa terhubung</p>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              {pcs.filter((pc) => pc.status !== 'offline').slice(0, 24).map((pc) => (
+              {pcs.filter(canReachPc).slice(0, 24).map((pc) => (
                 <div key={pc.id} className="border border-slate-100 rounded p-2">
                   <p className="text-[11px] font-semibold truncate">{getPcStudentName(pc)}</p>
                   <p className="text-[10px] text-slate-400">{pc.id}</p>

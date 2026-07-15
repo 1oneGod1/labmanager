@@ -47,4 +47,24 @@ assert.match(
   'Pemulihan renderer harus mengembalikan taskbar dan menyembunyikan window pengunci.',
 );
 
-console.log('Lock helper packaging and fail-open renderer startup: PASS');
+assert.match(
+  mainSource,
+  /powerMonitor\.on\('suspend'[\s\S]*?reportDevicePowerState\('sleeping'/,
+  'Client harus melaporkan status sleeping sebelum Windows suspend.',
+);
+assert.match(
+  mainSource,
+  /powerMonitor\.on\('resume'[\s\S]*?connectRealtime[\s\S]*?windows-resume-confirmed/,
+  'Client harus reconnect dan mengonfirmasi heartbeat setelah Windows resume.',
+);
+assert.match(
+  mainSource,
+  /session_state: activeSessionId \? 'active' : 'login'/,
+  'Heartbeat main process harus membedakan sesi login aplikasi dan sesi siswa aktif.',
+);
+assert.match(
+  appSource,
+  /s\.on\('disconnect'[\s\S]*?setAttentionMode\(\{ enabled: false[\s\S]*?electronAPI\?\.setAttentionMode\?\.\(false\)/,
+  'Disconnect server harus melepas overlay dan kunci native Attention Mode.',
+);
+console.log('Lock helper packaging, presence resume, and fail-open recovery: PASS');

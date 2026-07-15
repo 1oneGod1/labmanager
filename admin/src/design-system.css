@@ -309,6 +309,7 @@ body {
 .labkom-status-dot { width: 7px; height: 7px; flex: 0 0 7px; border-radius: 50%; background: var(--lab-text-3); }
 .labkom-status-dot.is-active { background: var(--lab-green); }
 .labkom-status-dot.is-locked { background: var(--lab-blue); }
+.labkom-status-dot.is-sleeping { background: #a78bfa; }
 .labkom-status-dot.is-offline { background: #5b6a82; }
 
 .labkom-overview {

@@ -20,6 +20,18 @@ const dashboardSource = fs.readFileSync(path.join(adminRoot, 'src', 'AdminDashbo
 assert.match(electronSource, /CLIENT_PAIRING_CODE/, 'Admin harus mempertahankan kode pairing pendek.');
 assert.match(electronSource, /randomInt\(0, 1_000_000\)/, 'Kode pairing harus dibuat sebagai 6 digit acak.');
 assert.match(dashboardSource, /pairing_code/, 'Dashboard harus membaca kode pairing dari backend.');
+const labPcOptionDeclarations = dashboardSource.match(/const labPcOptions\s*=/g) || [];
+assert.equal(
+  labPcOptionDeclarations.length,
+  1,
+  'labPcOptions harus didefinisikan satu kali pada cakupan dashboard.',
+);
+assert.ok(
+  dashboardSource.indexOf('const labPcOptions') < dashboardSource.indexOf('const renderDesignSelectedPanel'),
+  'Panel detail monitoring harus dapat mengakses labPcOptions tanpa ReferenceError.',
+);
+assert.match(dashboardSource, /status === 'sleeping'/, 'Dashboard harus membedakan status sleep dari offline.');
+
 assert.match(dashboardSource, /Kode Pairing PC Siswa/, 'Dashboard harus menampilkan kode pairing pendek.');
 
 console.log('Admin desktop API routing: PASS');

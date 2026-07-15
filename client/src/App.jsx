@@ -469,6 +469,7 @@ export default function App() {
       s.on('session:force-logout', (payload = {}) => {
         sessionStorage.clear();
         setAttentionMode({ enabled: false, message: '' });
+        window.electronAPI?.setAttentionMode?.(false);
         setCollectionRequest(null);
         setStudentData(null);
         setMode(MODE_LOGIN);
@@ -490,6 +491,7 @@ export default function App() {
       s.on('disconnect', (reason) => {
         console.log('[Socket] Disconnected from server');
         setAttentionMode({ enabled: false, message: '' });
+        window.electronAPI?.setAttentionMode?.(false);
         if (reason !== 'io client disconnect') setServerOnline(false);
       });
 

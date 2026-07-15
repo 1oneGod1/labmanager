@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification, safeStorage, session, protocol, net: electronNet } = require('electron');
+const { app, BrowserWindow, dialog, globalShortcut, ipcMain, screen, desktopCapturer, shell, Notification, safeStorage, session, protocol, net: electronNet, powerMonitor } = require('electron');
 const os              = require('os');
 const path            = require('path');
 const { pathToFileURL } = require('url');
@@ -106,6 +106,7 @@ let realtimeSocket = null;
 let realtimeRetryTimer = null;
 let realtimeTargetUrl = null;
 let presenceHeartbeatTimer = null;
+let devicePowerState = 'awake';
 let latestControlPolicy = null;
 let deepFreezeManager = null;
 let deepFreezeOperation = null;
@@ -1679,7 +1680,23 @@ function getPresencePayload() {
     mac: mac || null,
     ip: ip || null,
     student_name: screenShareState.studentName || null,
+    power_state: devicePowerState,
+    session_state: activeSessionId ? 'active' : 'login',
   };
+}
+
+function reportDevicePowerState(nextState, source = 'client') {
+  devicePowerState = nextState === 'sleeping' ? 'sleeping' : 'awake';
+  const payload = {
+    ...getPresencePayload(),
+    power_source: String(source || 'client').slice(0, 40),
+    observed_at: Date.now(),
+  };
+  if (realtimeSocket?.connected) {
+    realtimeSocket.emit('client:power-state', payload);
+    realtimeSocket.emit('client:heartbeat', payload);
+  }
+  return payload;
 }
 
 const PROXY_REGISTRY_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings';
@@ -2201,7 +2218,17 @@ function executeSystemCommand(payload = {}) {
   if (command === 'lock') {
     spawn('rundll32.exe', ['user32.dll,LockWorkStation'], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
   } else if (command === 'sleep') {
-    spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend',$false,$false)"], { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
+    reportDevicePowerState('sleeping', 'admin-command');
+    const sleepProcess = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-Command', "Add-Type -AssemblyName System.Windows.Forms; if ([System.Windows.Forms.Application]::SetSuspendState('Suspend',$false,$false)) { exit 0 } else { exit 1 }"], { detached: true, windowsHide: true, stdio: 'ignore' });
+    const restoreAwakeAfterFailure = (message) => {
+      reportDevicePowerState('awake', 'sleep-failed');
+      acknowledge(false, message);
+    };
+    sleepProcess.once('error', (error) => restoreAwakeAfterFailure(`Sleep gagal dijalankan: ${error.message}`));
+    sleepProcess.once('exit', (code) => {
+      if (code !== 0) restoreAwakeAfterFailure('Windows menolak masuk ke mode sleep.');
+    });
+    sleepProcess.unref();
   } else if (command === 'restart' || command === 'shutdown') {
     scheduleUwfAwarePowerAction(command);
   }
@@ -2534,6 +2561,7 @@ ipcMain.on('login-success', (_event, studentData) => {
     startScreenShare(cfg.serverUrl, studentData?.nama_lengkap);
     startActivityMonitoring(studentData);
   }
+  reportDevicePowerState('awake', 'login-success');
   if (latestControlPolicy) {
     applyControlPolicy(latestControlPolicy).catch((error) => log.warn('[POLICY] Gagal diterapkan saat login:', error.message));
   }
@@ -2647,6 +2675,8 @@ function registerMacToServer() {
     mac,
     ip,
     student_name: screenShareState.studentName || null,
+    power_state: devicePowerState,
+    session_state: activeSessionId ? 'active' : 'login',
   });
   try {
     const parsed = new URL(`${cfg.serverUrl}/api/client-cmd/register-mac`);
@@ -2896,6 +2926,24 @@ app.whenReady().then(async () => {
   await restoreSystemProxy().catch(() => false);
   clientSettings = loadClientSettings();
   applyClientSettings(clientSettings);
+
+  powerMonitor.on('suspend', () => {
+    reportDevicePowerState('sleeping', 'windows-suspend');
+  });
+  powerMonitor.on('resume', () => {
+    reportDevicePowerState('awake', 'windows-resume');
+    const resumeConfig = loadServerConfig();
+    if (resumeConfig.serverUrl) {
+      connectRealtime(resumeConfig.serverUrl).catch((error) => {
+        logScreenWarning(`[REALTIME] Reconnect setelah resume gagal: ${error.message}`);
+      });
+    }
+    const resumeTimer = setTimeout(() => {
+      reportDevicePowerState('awake', 'windows-resume-confirmed');
+      if (screenShareState.active) postScreenshot();
+    }, 1500);
+    resumeTimer.unref?.();
+  });
   // ── Daftarkan ke Windows Startup ─────────────────────────────
   // Agar app otomatis berjalan saat PC dinyalakan (kiosk mode)
   createWindow();

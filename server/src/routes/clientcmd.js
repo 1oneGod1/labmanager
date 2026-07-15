@@ -41,7 +41,7 @@ router.get('/current', requireDevice, (_req, res) => {
 
 // Client: register MAC
 router.post('/register-mac', requireDevice, (req, res) => {
-  const { mac, ip, student_name } = req.body;
+  const { mac, ip, student_name, power_state, session_state } = req.body;
   const pc_name = req.actor.pc_name;
   if (!pc_name || !mac) {
     return res.status(400).json({ success: false, message: 'pc_name dan mac wajib.' });
@@ -52,6 +52,8 @@ router.post('/register-mac', requireDevice, (req, res) => {
     ip: ip || null,
     student_name: student_name || null,
     source: 'http-heartbeat',
+    power_state: power_state || 'awake',
+    session_state,
   });
   return res.json({ success: true });
 });

@@ -18,30 +18,40 @@ export default function AttentionModeButton({ socket }) {
   }, []);
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) return undefined;
     const onAck = () => setAckCount((n) => n + 1);
+    const onDisconnect = () => setActive(false);
     socket.on('client:attention-ack', onAck);
-    return () => { socket.off('client:attention-ack', onAck); };
+    socket.on('disconnect', onDisconnect);
+    return () => {
+      socket.off('client:attention-ack', onAck);
+      socket.off('disconnect', onDisconnect);
+    };
   }, [socket]);
 
   const enable = () => {
-    if (!socket || !message.trim()) return;
+    if (!socket?.connected || !message.trim()) return;
     setAckCount(0);
-    socket.emit('admin:attention-mode', {
+    socket.timeout(5000).emit('admin:attention-mode', {
       enabled: true,
       message: message.trim(),
       target: 'all',
+    }, (error, response) => {
+      if (error || !response?.success) {
+        setActive(false);
+        return;
+      }
+      setActive(true);
     });
-    setActive(true);
   };
 
   const disable = () => {
-    if (!socket) return;
-    socket.emit('admin:attention-mode', {
+    setActive(false);
+    if (!socket?.connected) return;
+    socket.timeout(5000).emit('admin:attention-mode', {
       enabled: false,
       target: 'all',
     });
-    setActive(false);
   };
 
   if (!open) {
@@ -83,7 +93,7 @@ export default function AttentionModeButton({ socket }) {
         {!active ? (
           <button
             onClick={enable}
-            disabled={!socket || !message.trim()}
+            disabled={!socket?.connected || !message.trim()}
             className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-300 text-white rounded-lg font-medium text-sm flex items-center justify-center space-x-2 transition-colors"
           >
             <Send className="w-4 h-4" />

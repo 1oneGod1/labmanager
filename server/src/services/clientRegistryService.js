@@ -1,5 +1,7 @@
-const ONLINE_TTL_MS = 15000;
+const ONLINE_TTL_MS = 30000;
 const clientRegistry = new Map();
+const POWER_STATES = new Set(['awake', 'sleeping']);
+const SESSION_STATES = new Set(['login', 'active']);
 
 function normalizePcName(pcName) {
   return String(pcName || '').trim().toUpperCase();
@@ -10,6 +12,11 @@ function normalizeMac(mac) {
     .trim()
     .replace(/-/g, ':')
     .toUpperCase();
+}
+
+function normalizeState(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowed.has(normalized) ? normalized : fallback;
 }
 
 function upsertClient(entry = {}) {
@@ -24,6 +31,9 @@ function upsertClient(entry = {}) {
     student_name: null,
     socket_id: null,
     source: null,
+    power_state: 'awake',
+    session_state: 'login',
+    power_state_changed_at: now,
     first_seen: now,
     last_seen: now,
     connected: false,
@@ -35,6 +45,14 @@ function upsertClient(entry = {}) {
     last_seen: now,
     connected: true,
   };
+
+  const powerState = entry.power_state === undefined
+    ? (existing.power_state || 'awake')
+    : normalizeState(entry.power_state, POWER_STATES, existing.power_state || 'awake');
+  const sessionState = normalizeState(entry.session_state, SESSION_STATES, existing.session_state || 'login');
+  next.power_state = powerState;
+  next.session_state = sessionState;
+  if (powerState !== existing.power_state) next.power_state_changed_at = now;
 
   if (entry.mac !== undefined) next.mac = normalizeMac(entry.mac) || existing.mac || null;
   if (entry.ip !== undefined) next.ip = entry.ip || existing.ip || null;
@@ -52,7 +70,9 @@ function markClientDisconnected(pcName, socketId = null) {
 
   const existing = clientRegistry.get(normalizedPcName);
   if (!existing) return null;
-  if (socketId && existing.socket_id && existing.socket_id !== socketId) return existing;
+  // Socket lama dapat mengirim disconnect setelah socket pengganti sudah aktif.
+  // Jangan sampai event terlambat itu membuat PC yang sehat terlihat offline.
+  if (socketId && existing.socket_id && existing.socket_id !== socketId) return null;
 
   const next = {
     ...existing,
@@ -68,7 +88,7 @@ function markClientDisconnected(pcName, socketId = null) {
 function getClientRegistry(now = Date.now()) {
   return Array.from(clientRegistry.values(), (entry) => ({
     ...entry,
-    is_online: entry.connected || (now - entry.last_seen < ONLINE_TTL_MS),
+    is_online: entry.connected && (now - entry.last_seen < ONLINE_TTL_MS),
   })).sort((a, b) => a.pc_name.localeCompare(b.pc_name));
 }
 
