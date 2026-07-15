@@ -12,6 +12,7 @@ const COLLECTIONS = {
   chat: 'chat_messages',
   audit: 'admin_audit_logs',
   branding: 'app_branding',
+  deviceCredentials: 'device_credentials',
 };
 
 const dataDir = path.resolve(
@@ -689,6 +690,52 @@ const auditService = {
   },
 };
 
+// Kredensial perangkat disimpan sebagai claim yang dapat dicabut. Token asli
+// tidak pernah ditulis ke database; clientTokenService hanya menyimpan ID token
+// acak di claim dan menandatangani token dengan secret server.
+const deviceCredentialsService = {
+  getByPcName(pcName) {
+    const key = String(pcName || '').trim().toUpperCase();
+    return key ? store.get(COLLECTIONS.deviceCredentials, key) : null;
+  },
+
+  list() {
+    return store.list(COLLECTIONS.deviceCredentials)
+      .sort((left, right) => compareText(left.pc_name, right.pc_name));
+  },
+
+  save(claim) {
+    const pcName = String(claim?.pc_name || '').trim().toUpperCase();
+    if (!pcName) throw new Error('pc_name claim perangkat wajib diisi.');
+    const existing = store.get(COLLECTIONS.deviceCredentials, pcName);
+    const now = timestamp();
+    return store.set(COLLECTIONS.deviceCredentials, pcName, {
+      pc_name: pcName,
+      device_id: String(claim.device_id || '').trim().toLowerCase(),
+      token_id: String(claim.token_id || '').trim(),
+      issued_at: claim.issued_at || existing?.issued_at || now,
+      last_seen_at: claim.last_seen_at || now,
+      updated_at: now,
+    });
+  },
+
+  touch(pcName) {
+    const key = String(pcName || '').trim().toUpperCase();
+    const existing = key ? store.get(COLLECTIONS.deviceCredentials, key) : null;
+    if (!existing) return null;
+    const now = timestamp();
+    return store.update(COLLECTIONS.deviceCredentials, key, {
+      last_seen_at: now,
+      updated_at: now,
+    });
+  },
+
+  remove(pcName) {
+    const key = String(pcName || '').trim().toUpperCase();
+    return key ? store.remove(COLLECTIONS.deviceCredentials, key) > 0 : false;
+  },
+};
+
 function cleanupBackups() {
   fs.mkdirSync(backupDir, { recursive: true });
   const cutoff = Date.now() - (backupRetentionDays * 86_400_000);
@@ -790,4 +837,5 @@ module.exports = {
   chat: chatService,
   audit: auditService,
   branding: brandingService,
+  deviceCredentials: deviceCredentialsService,
 };

@@ -52,6 +52,8 @@ assert.match(
   'Local Deep Freeze changes must require the Kepala Lab password.',
 );
 assert.match(mainSource, /ipcMain\.handle\('relaunch-client-as-admin'/);
+assert.match(mainSource, /deviceTokenRejected/);
+assert.match(mainSource, /Pairing PC perlu diperbarui/);
 assert.match(preloadSource, /getDeepFreezeStatus/);
 assert.match(preloadSource, /relaunchAsAdministrator/);
 assert.match(panelSource, /Password Kepala Lab/);
@@ -143,7 +145,61 @@ const fakeFs = {
   assert.equal(invalid.success, false);
   assert.equal(commands.length, commandCount);
 
-  console.log('Deep Freeze UWF manager verification passed.');
+  let savedFaronicsPassword = '';
+  const faronicsCommands = [];
+  const faronicsManager = createDeepFreezeManager({
+    platform: 'win32',
+    env: { SystemRoot: 'C:\\Windows', ProgramFiles: 'C:\\Program Files' },
+    userDataPath: 'C:\\Users\\Student\\AppData\\Roaming\\labkom-client',
+    executablePath: 'C:\\Program Files\\LabKom Siswa\\LabKom Siswa.exe',
+    getProviderPassword: () => savedFaronicsPassword,
+    setProviderPassword: (value) => { savedFaronicsPassword = value; },
+    run: async (file, args) => {
+      faronicsCommands.push({ file, args: [...args] });
+      if (/powershell\.exe$/i.test(file)) {
+        return {
+          code: 0,
+          stdout: JSON.stringify({
+            product_name: 'Windows 11 Home Single Language',
+            supported: false,
+            is_admin: false,
+            feature_installed: false,
+            provider_ready: false,
+            system_drive: 'C:',
+          }),
+          stderr: '',
+        };
+      }
+      if (args.join(' ') === 'get /ISFROZEN') return { code: 0, stdout: '', stderr: '' };
+      if (args.join(' ') === 'get /version') return { code: 0, stdout: 'Deep Freeze 9', stderr: '' };
+      return { code: 0, stdout: '', stderr: '' };
+    },
+    fsImpl: {
+      ...fakeFs,
+      existsSync: (candidate) => /DFC\.exe$/i.test(candidate),
+    },
+    logger: { warn: () => {} },
+  });
+
+  const homeStatus = await faronicsManager.getStatus();
+  assert.equal(homeStatus.provider, 'faronics');
+  assert.equal(homeStatus.supported, true);
+  assert.equal(homeStatus.state, 'open');
+  assert.equal(homeStatus.requires_provider_password, true);
+
+  const faronicsFrozen = await faronicsManager.configure('freeze', {
+    providerPassword: 'LabCommand123!',
+  });
+  assert.equal(faronicsFrozen.success, true);
+  assert.equal(faronicsFrozen.state, 'pending_freeze');
+  assert.equal(savedFaronicsPassword, 'LabCommand123!');
+  assert(faronicsCommands.some(({ args }) => args.join(' ') === 'LabCommand123! /FREEZENEXTBOOT'));
+
+  assert.match(mainSource, /faronics_command_password_protected/);
+  assert.match(preloadSource, /providerPassword/);
+  assert.match(panelSource, /Password Command Line Faronics/);
+
+  console.log('Deep Freeze dual-provider manager verification passed.');
 })().catch((error) => {
   console.error(error);
   process.exit(1);

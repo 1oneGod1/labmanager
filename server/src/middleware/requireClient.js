@@ -24,7 +24,7 @@ function requireClient(req, res, next) {
   // Client token
   const claim = clientTokenService.validateToken(token);
   if (!claim) {
-    return res.status(401).json({ success: false, message: 'Token client invalid atau expired.' });
+    return res.status(401).json({ success: false, message: 'Token client invalid atau telah dicabut.' });
   }
 
   req.actor = { role: 'client', device_id: claim.device_id, pc_name: claim.pc_name };
@@ -43,7 +43,7 @@ function requireDevice(req, res, next) {
   const claim = clientTokenService.validateToken(token);
 
   if (!claim) {
-    return res.status(401).json({ success: false, message: 'Token perangkat invalid atau expired.' });
+    return res.status(401).json({ success: false, message: 'Token perangkat invalid atau telah dicabut.' });
   }
 
   req.actor = { role: 'client', device_id: claim.device_id, pc_name: claim.pc_name };

@@ -379,6 +379,20 @@ function setStoredClientToken(token) {
   else delete info.client_token_protected;
   saveDeviceInfo(info);
 }
+function getStoredFaronicsPassword() {
+  const info = loadDeviceInfo();
+  return info.faronics_command_password_protected
+    ? unprotectLocalSecret(info.faronics_command_password_protected) || ''
+    : '';
+}
+function setStoredFaronicsPassword(password) {
+  const info = loadDeviceInfo();
+  if (password) info.faronics_command_password_protected = protectLocalSecret(password);
+  else delete info.faronics_command_password_protected;
+  saveDeviceInfo(info);
+}
+
+let lastDeviceRegistrationError = '';
 
 // Minta token dari server. Resolve null kalau gagal.
 function requestDeviceToken(serverUrl) {
@@ -409,6 +423,7 @@ function requestDeviceToken(serverUrl) {
         try {
           const json = JSON.parse(buf);
           if (json?.success && json.data?.token) {
+            lastDeviceRegistrationError = '';
             try {
               setStoredClientToken(json.data.token);
             } catch (error) {
@@ -418,34 +433,53 @@ function requestDeviceToken(serverUrl) {
             }
             resolve(json.data.token);
           } else {
-            log.warn('[DEVICE-AUTH] Register ditolak:', json?.message);
+            lastDeviceRegistrationError = String(json?.message || 'Pairing PC ditolak server.').slice(0, 240);
+            log.warn('[DEVICE-AUTH] Register ditolak:', lastDeviceRegistrationError);
             resolve(null);
           }
-        } catch { resolve(null); }
+        } catch {
+          lastDeviceRegistrationError = 'Respons pairing dari server tidak valid.';
+          resolve(null);
+        }
       });
     });
-    req.setTimeout(5000, () => { req.destroy(); resolve(null); });
-    req.on('error', (err) => { log.warn('[DEVICE-AUTH] Error:', err.message); resolve(null); });
+    req.setTimeout(5000, () => {
+      lastDeviceRegistrationError = 'Server tidak merespons saat memperbarui pairing PC.';
+      req.destroy();
+      resolve(null);
+    });
+    req.on('error', (err) => {
+      lastDeviceRegistrationError = 'Pairing PC gagal karena server tidak dapat dijangkau.';
+      log.warn('[DEVICE-AUTH] Error:', err.message);
+      resolve(null);
+    });
     req.write(body);
     req.end();
   });
 }
 
-// Pastikan ada token valid; kalau belum atau ditolak server, register ulang
+// Pastikan ada token valid; kalau belum atau ditolak server, register ulang.
+// Satu promise dipakai bersama agar renderer dan main process tidak meminta dua
+// token berbeda saat aplikasi pertama kali dijalankan.
+let clientTokenRequestPromise = null;
 async function ensureClientToken(serverUrl) {
   const stored = getStoredClientToken();
   if (stored) return stored;
-  return await requestDeviceToken(serverUrl);
+  if (!serverUrl) return null;
+  if (!clientTokenRequestPromise) {
+    clientTokenRequestPromise = requestDeviceToken(serverUrl)
+      .finally(() => { clientTokenRequestPromise = null; });
+  }
+  return await clientTokenRequestPromise;
 }
-let clientTokenRefreshPromise = null;
 async function refreshClientToken(serverUrl) {
   if (!serverUrl) return null;
-  if (!clientTokenRefreshPromise) {
+  if (!clientTokenRequestPromise) {
     setStoredClientToken(null);
-    clientTokenRefreshPromise = requestDeviceToken(serverUrl)
-      .finally(() => { clientTokenRefreshPromise = null; });
+    clientTokenRequestPromise = requestDeviceToken(serverUrl)
+      .finally(() => { clientTokenRequestPromise = null; });
   }
-  return await clientTokenRefreshPromise;
+  return await clientTokenRequestPromise;
 }
 
 
@@ -1922,6 +1956,8 @@ function getDeepFreezeManager() {
       userDataPath: app.getPath('userData'),
       executablePath: process.execPath,
       logger: log,
+      getProviderPassword: getStoredFaronicsPassword,
+      setProviderPassword: setStoredFaronicsPassword,
     });
   }
   return deepFreezeManager;
@@ -2724,9 +2760,24 @@ ipcMain.handle('api-request', async (_event, url, options = {}) => {
   }
 
   let result = await performRendererApiRequest(parsed, options, getStoredClientToken());
-  if (result.status === 401) {
+  const authMessage = String(result.data?.message || '');
+  const deviceTokenRejected = result.status === 401
+    && /token\s+(?:perangkat|client)|token.*(?:invalid|dicabut|expired)/i.test(authMessage);
+  if (deviceTokenRejected) {
     const freshToken = await refreshClientToken(parsed.origin);
-    if (freshToken) result = await performRendererApiRequest(parsed, options, freshToken);
+    if (freshToken) {
+      result = await performRendererApiRequest(parsed, options, freshToken);
+    } else {
+      result = {
+        ok: false,
+        status: 401,
+        data: {
+          success: false,
+          message: lastDeviceRegistrationError
+            || 'Pairing PC perlu diperbarui. Buka Pengaturan dan masukkan kembali kunci pairing dari Admin.',
+        },
+      };
+    }
   }
   return result;
 
@@ -2857,7 +2908,7 @@ async function getLocalDeepFreezeStatus() {
   }
 }
 
-async function configureDeepFreezeLocally(action) {
+async function configureDeepFreezeLocally(action, providerPassword = '') {
   if (!['freeze', 'unfreeze'].includes(action)) {
     return { success: false, state: 'error', message: 'Aksi Deep Freeze tidak valid.' };
   }
@@ -2881,7 +2932,7 @@ async function configureDeepFreezeLocally(action) {
     observed_at: Date.now(),
   }, { action });
 
-  const operation = getDeepFreezeManager().configure(action);
+  const operation = getDeepFreezeManager().configure(action, { providerPassword });
   deepFreezeOperation = operation;
   try {
     const status = await operation;
@@ -2961,7 +3012,8 @@ ipcMain.handle('configure-deep-freeze', async (event, payload = {}) => {
     return { success: false, authorized: false, state: 'error', message: 'Password Kepala Lab salah.' };
   }
   const action = String(payload.action || '').toLowerCase();
-  return configureDeepFreezeLocally(action);
+  const providerPassword = String(payload.providerPassword || '').slice(0, 63);
+  return configureDeepFreezeLocally(action, providerPassword);
 });
 
 ipcMain.handle('relaunch-client-as-admin', async (event, password) => {

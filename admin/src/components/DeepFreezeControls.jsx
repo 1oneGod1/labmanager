@@ -4,6 +4,8 @@ import { AlertTriangle, HardDrive, Loader2, RefreshCw, Snowflake, Unlock } from 
 const STATE_LABELS = {
   unsupported_platform: 'Bukan Windows',
   unsupported_edition: 'Tidak didukung',
+  provider_not_installed: 'Faronics belum terpasang',
+  provider_auth_required: 'Password Faronics diperlukan',
   feature_not_installed: 'Belum disiapkan',
   feature_pending_restart: 'Perlu restart',
   frozen: 'Beku aktif',
@@ -40,7 +42,7 @@ export default function DeepFreezeControls({
 }) {
   const state = status?.state || 'unknown';
   const isBusy = busy || ['configuring', 'busy'].includes(state);
-  const unsupported = ['unsupported_platform', 'unsupported_edition'].includes(state);
+  const unsupported = ['unsupported_platform', 'unsupported_edition', 'provider_not_installed'].includes(state);
   const nextFrozen = status?.next_frozen === true;
   const action = nextFrozen ? 'unfreeze' : 'freeze';
   const overlayUsed = Number(status?.overlay_consumption_mb) || 0;
@@ -52,7 +54,7 @@ export default function DeepFreezeControls({
         <div className="flex items-start gap-2">
           <div className="rounded-lg bg-cyan-500/10 p-2 text-cyan-300"><HardDrive className="h-4 w-4" /></div>
           <div>
-            <strong className="block text-xs text-slate-100">Deep Freeze drive sistem</strong>
+            <strong className="block text-xs text-slate-100">{status?.provider_label || 'Deep Freeze drive sistem'}</strong>
             <span className="block text-[10px] text-slate-400">{pcName}</span>
           </div>
         </div>
@@ -62,7 +64,7 @@ export default function DeepFreezeControls({
       </div>
 
       <p className="mt-3 text-[10px] leading-4 text-slate-400">
-        {status?.message || 'Periksa dukungan UWF sebelum mengaktifkan mode beku.'}
+        {status?.message || 'Periksa provider perlindungan sebelum mengaktifkan mode beku.'}
       </p>
 
       {status?.product_name && (
@@ -83,6 +85,13 @@ export default function DeepFreezeControls({
         </div>
       )}
 
+      {status?.requires_provider_password && (
+        <div className="mt-2 flex gap-2 rounded-lg bg-amber-500/10 p-2 text-[9px] leading-4 text-amber-200">
+          <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+          Buka Pengaturan pada PC siswa dan simpan password Command Line Faronics satu kali.
+        </div>
+      )}
+
       <div className="mt-3 flex gap-2">
         <button
           type="button"
@@ -96,7 +105,7 @@ export default function DeepFreezeControls({
         <button
           type="button"
           onClick={() => onRequest?.(action)}
-          disabled={offline || isBusy || unsupported}
+          disabled={offline || isBusy || unsupported || status?.requires_provider_password}
           className={`inline-flex h-9 flex-1 items-center justify-center gap-1 rounded-lg px-3 text-[10px] font-semibold disabled:opacity-40 ${
             nextFrozen
               ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'

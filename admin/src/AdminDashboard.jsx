@@ -2134,7 +2134,7 @@ export default function AdminDashboard() {
                   <div className="flex-1 min-w-0">
                     <p className="font-mono font-bold text-slate-800 text-sm">{claim.pc_name}</p>
                     <p className="text-xs text-slate-500 font-mono truncate">device: {claim.device_id}</p>
-                    <p className="text-[11px] text-slate-400">expires: {claim.expires_at ? new Date(claim.expires_at).toLocaleString('id-ID') : '-'}</p>
+                    <p className="text-[11px] text-slate-400">{claim.expires_at ? `berlaku sampai: ${new Date(claim.expires_at).toLocaleString('id-ID')}` : 'berlaku sampai dicabut admin'}</p>
                   </div>
                   <button
                     onClick={() => revokeDeviceClaim(claim.pc_name)}

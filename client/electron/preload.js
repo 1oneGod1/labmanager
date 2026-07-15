@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadUpdate:     ()       => ipcRenderer.invoke('download-client-update'),
   installUpdate:      ()       => ipcRenderer.send('install-client-update'),
   getDeepFreezeStatus: () => ipcRenderer.invoke('get-deep-freeze-status'),
-  configureDeepFreeze: (action, password) => ipcRenderer.invoke('configure-deep-freeze', { action, password }),
+  configureDeepFreeze: (action, password, providerPassword = '') => ipcRenderer.invoke('configure-deep-freeze', { action, password, providerPassword }),
   relaunchAsAdministrator: (password) => ipcRenderer.invoke('relaunch-client-as-admin', password),
   onDeepFreezeStatus: (cb) => ipcRenderer.on('deep-freeze-status', (_e, data) => cb(data)),
 

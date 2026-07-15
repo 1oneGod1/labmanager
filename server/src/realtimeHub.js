@@ -39,6 +39,12 @@ function normalizeDeepFreezeStatusPayload(payload = {}) {
     success: payload.success !== false,
     state,
     action,
+    provider: ['uwf', 'faronics', 'none'].includes(String(payload.provider || ''))
+      ? String(payload.provider)
+      : 'none',
+    provider_label: String(payload.provider_label || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 120),
+    credential_configured: payload.credential_configured === true,
+    requires_provider_password: payload.requires_provider_password === true,
     command_id: commandId,
     supported: payload.supported === true,
     feature_installed: payload.feature_installed === true,
@@ -56,6 +62,7 @@ function normalizeDeepFreezeStatusPayload(payload = {}) {
     overlay_consumption_mb: boundedNumber(payload.overlay_consumption_mb),
     overlay_available_mb: boundedNumber(payload.overlay_available_mb),
     product_name: String(payload.product_name || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 160),
+    faronics_version: String(payload.faronics_version || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 120),
     system_drive: /^[A-Za-z]:$/.test(String(payload.system_drive || '')) ? String(payload.system_drive).toUpperCase() : null,
     message: String(payload.message || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 300),
     technical_error: String(payload.technical_error || '').replace(/[\u0000-\u001F]/g, ' ').slice(0, 500),

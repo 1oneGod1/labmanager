@@ -7,6 +7,9 @@ test('normalizes Deep Freeze status to an explicit safe schema', () => {
     success: true,
     state: 'pending_freeze',
     action: 'freeze',
+    provider: 'faronics',
+    provider_label: 'Faronics Deep Freeze Enterprise',
+    credential_configured: true,
     command_id: 'freeze_12345678_abcd12',
     supported: true,
     feature_installed: true,
@@ -19,6 +22,9 @@ test('normalizes Deep Freeze status to an explicit safe schema', () => {
 
   assert.equal(status.state, 'pending_freeze');
   assert.equal(status.action, 'freeze');
+  assert.equal(status.provider, 'faronics');
+  assert.equal(status.provider_label, 'Faronics Deep Freeze Enterprise');
+  assert.equal(status.credential_configured, true);
   assert.equal(status.next_frozen, true);
   assert.equal(status.message, 'Siap  setelah restart');
   assert.equal('unexpected' in status, false);

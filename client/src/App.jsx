@@ -695,14 +695,14 @@ export default function App() {
     }
   }, []);
 
-  const handleConfigureDeepFreeze = useCallback(async (action, adminPassword) => {
+  const handleConfigureDeepFreeze = useCallback(async (action, adminPassword, providerPassword = '') => {
     if (!window.electronAPI?.configureDeepFreeze) {
       return { success: false, message: 'Kontrol Deep Freeze tidak tersedia pada mode ini.' };
     }
 
     setDeepFreezeBusy(true);
     try {
-      const result = await window.electronAPI.configureDeepFreeze(action, adminPassword);
+      const result = await window.electronAPI.configureDeepFreeze(action, adminPassword, providerPassword);
       if (result) setDeepFreezeStatus(result);
       return result;
     } catch (error) {

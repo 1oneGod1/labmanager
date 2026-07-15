@@ -6,6 +6,8 @@ const UWF_NAMESPACE = 'root\\standardcimv2\\embedded';
 const SUPPORTED_EDITION_PATTERN = /(enterprise|education|iot)/i;
 const ALLOWED_ACTIONS = new Set(['status', 'freeze', 'unfreeze']);
 const DEFAULT_OVERLAY_MB = 4096;
+const FARONICS_PROVIDER = 'faronics';
+const UWF_PROVIDER = 'uwf';
 
 const STATUS_SCRIPT = [
   "$ProgressPreference = 'SilentlyContinue'",
@@ -104,6 +106,8 @@ function statusMessage(state) {
   const messages = {
     unsupported_platform: 'Deep Freeze hanya tersedia pada client Windows.',
     unsupported_edition: 'Edisi Windows ini tidak mendukung Unified Write Filter (perlu Enterprise, Education, atau IoT Enterprise).',
+    provider_not_installed: 'Windows Home/Pro memerlukan Faronics Deep Freeze Enterprise. Instal workstation berlisensi agar LabKom dapat mengelolanya.',
+    provider_auth_required: 'Masukkan password Command Line Faronics sekali pada PC siswa sebelum kontrol jarak jauh digunakan.',
     feature_not_installed: 'Unified Write Filter belum terpasang. Perintah bekukan akan memasangnya dan memerlukan restart.',
     feature_pending_restart: 'Unified Write Filter sudah dipasang dan menunggu restart Windows.',
     frozen: 'Mode beku aktif. Perubahan pada drive sistem akan dibuang saat restart.',
@@ -112,7 +116,7 @@ function statusMessage(state) {
     pending_unfreeze: 'Mode terbuka dijadwalkan dan akan aktif setelah restart.',
     partial: 'Konfigurasi UWF belum lengkap. Kirim ulang perintah mode yang diinginkan.',
     configuring: 'Konfigurasi Deep Freeze sedang diproses.',
-    error: 'Status Unified Write Filter tidak dapat dibaca.',
+    error: 'Status perlindungan drive tidak dapat dibaca.',
   };
   return messages[state] || messages.error;
 }
@@ -122,6 +126,8 @@ function normalizeDeepFreezeStatus(raw = {}, options = {}) {
     return {
       success: true,
       state: 'unsupported_platform',
+      provider: 'none',
+      provider_label: 'Tidak tersedia',
       supported: false,
       feature_installed: false,
       provider_ready: false,
@@ -166,6 +172,10 @@ function normalizeDeepFreezeStatus(raw = {}, options = {}) {
   return {
     success: true,
     state,
+    provider: UWF_PROVIDER,
+    provider_label: 'Microsoft Unified Write Filter',
+    credential_configured: true,
+    requires_provider_password: false,
     supported,
     feature_installed: featureInstalled,
     provider_ready: providerReady,
@@ -202,6 +212,18 @@ function createDeepFreezeManager(options = {}) {
   const uwfPath = path.join(system32, 'uwfmgr.exe');
   const dismPath = path.join(system32, 'dism.exe');
   const pendingPath = path.join(userDataPath, 'deep-freeze.pending.json');
+  const getProviderPassword = typeof options.getProviderPassword === 'function'
+    ? options.getProviderPassword
+    : () => '';
+  const setProviderPassword = typeof options.setProviderPassword === 'function'
+    ? options.setProviderPassword
+    : () => {};
+  const dfcCandidates = [
+    path.join(systemRoot, 'SysWOW64', 'DFC.exe'),
+    path.join(systemRoot, 'System32', 'DFC.exe'),
+    path.join(String(env.ProgramFiles || 'C:\\Program Files'), 'Faronics', 'Deep Freeze Enterprise', 'DFC.exe'),
+    path.join(String(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'), 'Faronics', 'Deep Freeze Enterprise', 'DFC.exe'),
+  ];
 
   function clearPending() {
     try {
@@ -211,10 +233,14 @@ function createDeepFreezeManager(options = {}) {
     }
   }
 
-  function savePending(action) {
+  function savePending(action, provider = UWF_PROVIDER) {
     try {
       fsImpl.mkdirSync(userDataPath, { recursive: true });
-      fsImpl.writeFileSync(pendingPath, JSON.stringify({ action, requested_at: Date.now() }, null, 2), 'utf8');
+      fsImpl.writeFileSync(pendingPath, JSON.stringify({
+        action,
+        provider,
+        requested_at: Date.now(),
+      }, null, 2), 'utf8');
     } catch (error) {
       logger.warn?.('[DEEP-FREEZE] Gagal menyimpan status pending:', error.message);
     }
@@ -223,10 +249,108 @@ function createDeepFreezeManager(options = {}) {
   function loadPending() {
     try {
       const value = JSON.parse(fsImpl.readFileSync(pendingPath, 'utf8'));
-      return value?.action === 'freeze' ? value : null;
+      if (!['freeze', 'unfreeze'].includes(value?.action)) return null;
+      return {
+        ...value,
+        provider: value.provider === FARONICS_PROVIDER ? FARONICS_PROVIDER : UWF_PROVIDER,
+      };
     } catch {
       return null;
     }
+  }
+
+  function findDfcPath() {
+    return dfcCandidates.find((candidate) => {
+      try { return fsImpl.existsSync(candidate); } catch { return false; }
+    }) || null;
+  }
+
+  async function getFaronicsStatus(parsed, dfcPath) {
+    const probe = await run(dfcPath, ['get', '/ISFROZEN'], { timeout: 30_000 });
+    const credentialConfigured = Boolean(String(getProviderPassword() || '').trim());
+    if (![0, 1].includes(probe.code)) {
+      return {
+        success: false,
+        state: 'error',
+        provider: FARONICS_PROVIDER,
+        provider_label: 'Faronics Deep Freeze Enterprise',
+        supported: true,
+        feature_installed: true,
+        provider_ready: false,
+        is_admin: parsed.is_admin === true,
+        can_configure: false,
+        credential_configured: credentialConfigured,
+        requires_provider_password: !credentialConfigured,
+        current_enabled: false,
+        next_enabled: false,
+        current_protected: false,
+        next_protected: false,
+        current_frozen: false,
+        next_frozen: false,
+        restart_required: false,
+        overlay_consumption_mb: 0,
+        overlay_available_mb: 0,
+        product_name: String(parsed.product_name || '').slice(0, 160),
+        system_drive: String(parsed.system_drive || 'C:').toUpperCase(),
+        dfc_path: dfcPath,
+        message: 'Faronics DFC ditemukan tetapi status Frozen tidak dapat dibaca.',
+        technical_error: String(probe.stderr || probe.stdout || probe.error || '').slice(0, 500),
+        observed_at: Date.now(),
+      };
+    }
+
+    const currentFrozen = probe.code === 1;
+    let pending = loadPending();
+    if (pending?.provider === FARONICS_PROVIDER) {
+      const requestedFrozen = pending.action === 'freeze';
+      if (requestedFrozen === currentFrozen) {
+        clearPending();
+        pending = null;
+      }
+    }
+    const providerPending = pending?.provider === FARONICS_PROVIDER ? pending : null;
+    const nextFrozen = providerPending ? providerPending.action === 'freeze' : currentFrozen;
+    const state = currentFrozen === nextFrozen
+      ? (currentFrozen ? 'frozen' : 'open')
+      : (nextFrozen ? 'pending_freeze' : 'pending_unfreeze');
+    const versionResult = await run(dfcPath, ['get', '/version'], { timeout: 15_000 });
+    const version = String(versionResult.stdout || '').trim().split(/\r?\n/).pop()?.slice(0, 120) || '';
+
+    return {
+      success: true,
+      state,
+      provider: FARONICS_PROVIDER,
+      provider_label: 'Faronics Deep Freeze Enterprise',
+      supported: true,
+      feature_installed: true,
+      provider_ready: true,
+      is_admin: parsed.is_admin === true,
+      can_configure: credentialConfigured,
+      credential_configured: credentialConfigured,
+      requires_provider_password: !credentialConfigured,
+      current_enabled: currentFrozen,
+      next_enabled: nextFrozen,
+      current_protected: currentFrozen,
+      next_protected: nextFrozen,
+      current_frozen: currentFrozen,
+      next_frozen: nextFrozen,
+      restart_required: currentFrozen !== nextFrozen,
+      overlay_consumption_mb: 0,
+      overlay_available_mb: 0,
+      product_name: String(parsed.product_name || '').slice(0, 160),
+      system_drive: /^[A-Za-z]:$/.test(String(parsed.system_drive || ''))
+        ? String(parsed.system_drive).toUpperCase()
+        : 'C:',
+      faronics_version: version,
+      dfc_path: dfcPath,
+      technical_error: '',
+      message: state === 'frozen'
+        ? 'Faronics Deep Freeze aktif. Perubahan siswa akan dibuang saat restart.'
+        : state === 'open'
+          ? 'Faronics Deep Freeze dalam mode Thawed. Perubahan akan disimpan.'
+          : statusMessage(state),
+      observed_at: Date.now(),
+    };
   }
 
   async function getStatus() {
@@ -254,7 +378,21 @@ function createDeepFreezeManager(options = {}) {
         message: statusMessage('error'),
       };
     }
-    return normalizeDeepFreezeStatus(parsed, { platform });
+
+    const dfcPath = findDfcPath();
+    if (dfcPath) return getFaronicsStatus(parsed, dfcPath);
+
+    const uwfStatus = normalizeDeepFreezeStatus(parsed, { platform });
+    if (!uwfStatus.supported) {
+      return {
+        ...uwfStatus,
+        provider: 'none',
+        provider_label: 'Belum terpasang',
+        state: 'provider_not_installed',
+        message: statusMessage('provider_not_installed'),
+      };
+    }
+    return uwfStatus;
   }
 
   async function runUwf(args, timeout = 90_000) {
@@ -286,7 +424,79 @@ function createDeepFreezeManager(options = {}) {
     ], { timeout: 15 * 60_000, maxBuffer: 2 * 1024 * 1024 });
   }
 
-  async function configure(action) {
+  async function configureFaronics(action, status, configureOptions = {}) {
+    if (action === 'freeze' && status.current_frozen && status.next_frozen) {
+      clearPending();
+      return { ...status, success: true, message: 'Faronics sudah dalam mode Frozen.' };
+    }
+    if (action === 'unfreeze' && !status.current_frozen && !status.next_frozen) {
+      clearPending();
+      return { ...status, success: true, message: 'Faronics sudah dalam mode Thawed.' };
+    }
+
+    const suppliedPassword = String(configureOptions.providerPassword || '').slice(0, 63);
+    const storedPassword = String(getProviderPassword() || '').slice(0, 63);
+    const password = suppliedPassword || storedPassword;
+    if (!password.trim()) {
+      return {
+        ...status,
+        success: false,
+        state: 'provider_auth_required',
+        can_configure: false,
+        credential_configured: false,
+        requires_provider_password: true,
+        message: statusMessage('provider_auth_required'),
+      };
+    }
+    if (password.length > 63) {
+      return {
+        ...status,
+        success: false,
+        state: 'provider_auth_required',
+        requires_provider_password: true,
+        message: 'Password Command Line Faronics maksimal 63 karakter.',
+      };
+    }
+
+    const command = action === 'freeze' ? '/FREEZENEXTBOOT' : '/THAWNEXTBOOT';
+    const result = await run(status.dfc_path, [password, command], { timeout: 90_000 });
+    if (result.code !== 0) {
+      return {
+        ...status,
+        success: false,
+        state: 'provider_auth_required',
+        can_configure: false,
+        requires_provider_password: true,
+        message: 'Perintah Faronics ditolak. Periksa password Command Line dan hak DFC.',
+        technical_error: String(result.stderr || result.stdout || result.error || '').slice(0, 500),
+      };
+    }
+
+    if (suppliedPassword) {
+      try { setProviderPassword(suppliedPassword); } catch (error) {
+        logger.warn?.('[DEEP-FREEZE] Password Faronics tidak dapat disimpan:', error.message);
+      }
+    }
+    savePending(action, FARONICS_PROVIDER);
+    const nextFrozen = action === 'freeze';
+    return {
+      ...status,
+      success: true,
+      state: nextFrozen ? 'pending_freeze' : 'pending_unfreeze',
+      can_configure: true,
+      credential_configured: true,
+      requires_provider_password: false,
+      next_enabled: nextFrozen,
+      next_protected: nextFrozen,
+      next_frozen: nextFrozen,
+      restart_required: status.current_frozen !== nextFrozen,
+      message: nextFrozen
+        ? 'Faronics dijadwalkan Frozen pada restart berikutnya.'
+        : 'Faronics dijadwalkan Thawed pada restart berikutnya.',
+    };
+  }
+
+  async function configure(action, configureOptions = {}) {
     if (!ALLOWED_ACTIONS.has(action)) {
       return { success: false, state: 'error', message: 'Aksi Deep Freeze tidak valid.', observed_at: Date.now() };
     }
@@ -295,6 +505,9 @@ function createDeepFreezeManager(options = {}) {
     let status = await getStatus();
     if (!status.supported) {
       return { ...status, success: false };
+    }
+    if (status.provider === FARONICS_PROVIDER) {
+      return configureFaronics(action, status, configureOptions);
     }
     if (!status.is_admin) {
       return {
@@ -424,6 +637,7 @@ function createDeepFreezeManager(options = {}) {
     const pending = loadPending();
     if (!pending) return getStatus();
     const status = await getStatus();
+    if (pending.provider === FARONICS_PROVIDER) return status;
     if (!status.is_admin || !status.feature_installed || !status.provider_ready) {
       return { ...status, pending_action: 'freeze' };
     }
@@ -432,6 +646,8 @@ function createDeepFreezeManager(options = {}) {
 
   async function safePowerAction(action) {
     if (platform !== 'win32' || !['restart', 'shutdown'].includes(action)) return false;
+    const status = await getStatus();
+    if (status.provider !== UWF_PROVIDER) return false;
     const result = await runUwf(['filter', action], 120_000);
     return result.ok;
   }
@@ -441,13 +657,15 @@ function createDeepFreezeManager(options = {}) {
     configure,
     reconcilePending,
     safePowerAction,
-    paths: { uwfPath, dismPath, powershellPath, pendingPath },
+    paths: { uwfPath, dismPath, powershellPath, pendingPath, dfcCandidates },
   };
 }
 
 module.exports = {
   ALLOWED_ACTIONS,
   DEFAULT_OVERLAY_MB,
+  FARONICS_PROVIDER,
+  UWF_PROVIDER,
   STATUS_SCRIPT,
   createDeepFreezeManager,
   isEditionSupported,

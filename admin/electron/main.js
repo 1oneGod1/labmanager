@@ -59,10 +59,21 @@ function applyAdminPasswordPolicy(envPath) {
 function ensureClientRegistrationKey(envPath) {
   let content = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
   const configured = content.match(/^CLIENT_REGISTRATION_KEY=(.*)$/m)?.[1]?.trim() || '';
-  if (configured.length >= 32) return false;
+  let changed = false;
+  if (configured.length < 32) {
+    const generated = crypto.randomBytes(24).toString('base64url');
+    content = upsertEnvValue(content, 'CLIENT_REGISTRATION_KEY', generated);
+    changed = true;
+  }
 
-  const generated = crypto.randomBytes(24).toString('base64url');
-  content = upsertEnvValue(content, 'CLIENT_REGISTRATION_KEY', generated);
+  // Secret terpisah membuat token perangkat tetap dapat diverifikasi setelah
+  // backend restart, tanpa menyimpan token mentah di database lokal.
+  const tokenSecret = content.match(/^CLIENT_TOKEN_SECRET=(.*)$/m)?.[1]?.trim() || '';
+  if (tokenSecret.length < 32) {
+    content = upsertEnvValue(content, 'CLIENT_TOKEN_SECRET', crypto.randomBytes(32).toString('base64url'));
+    changed = true;
+  }
+  if (!changed) return false;
   fs.writeFileSync(envPath, content, 'utf8');
   return true;
 }
@@ -366,6 +377,8 @@ async function startServer() {
   // server.env adalah sumber konfigurasi admin yang otoritatif. Hindari nilai
   // ADMIN_PASSWORD dari shell induk mengalahkan hasil migrasi dotenv.
   delete serverEnv.ADMIN_PASSWORD;
+  delete serverEnv.CLIENT_REGISTRATION_KEY;
+  delete serverEnv.CLIENT_TOKEN_SECRET;
   if (!isDev) serverEnv.ELECTRON_RUN_AS_NODE = '1';
 
   const managedProcess = spawn(nodeExe, [serverEntry], {

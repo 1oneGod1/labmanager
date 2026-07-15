@@ -68,6 +68,32 @@ try {
   $principal = New-Object Security.Principal.WindowsPrincipal($identity)
   $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
+  # Jika workstation Faronics Enterprise sudah tersedia, LabKom memakai DFC
+  # dan tidak perlu mengaktifkan optional feature UWF.
+  $dfcCandidates = @(
+    (Join-Path $env:SystemRoot 'SysWOW64\DFC.exe'),
+    (Join-Path $env:SystemRoot 'System32\DFC.exe'),
+    (Join-Path $env:ProgramFiles 'Faronics\Deep Freeze Enterprise\DFC.exe')
+  )
+  if (${env:ProgramFiles(x86)}) {
+    $dfcCandidates += Join-Path ${env:ProgramFiles(x86)} 'Faronics\Deep Freeze Enterprise\DFC.exe'
+  }
+  $dfcPath = $dfcCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  if ($dfcPath) {
+    $state = @{
+      State = 'faronics_ready'
+      Success = $true
+      Supported = $true
+      IsAdmin = $isAdmin
+      RestartRequired = $false
+      ExitCode = 0
+      ProductName = $productName
+      Message = 'Faronics Deep Freeze Enterprise terdeteksi. Masukkan password Command Line satu kali dari Pengaturan LabKom Siswa.'
+    }
+    Save-ProvisionState @state
+    exit 0
+  }
+
   if (-not $supported) {
     $state = @{
       State = 'unsupported_edition'
@@ -77,7 +103,7 @@ try {
       RestartRequired = $false
       ExitCode = 0
       ProductName = $productName
-      Message = 'Edisi Windows tidak menyediakan Unified Write Filter. LabKom Siswa tetap dapat digunakan tanpa perlindungan UWF.'
+      Message = 'Edisi Windows tidak menyediakan UWF. Instal Faronics Deep Freeze Enterprise berlisensi agar proteksi restart dapat dikelola LabKom.'
     }
     Save-ProvisionState @state
     exit 0
