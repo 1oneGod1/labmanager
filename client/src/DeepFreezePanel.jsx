@@ -106,6 +106,10 @@ export default function DeepFreezePanel({
             {status.message || 'Memeriksa dukungan dan status perlindungan komputer ini.'}
           </p>
 
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-[11px] leading-5 text-blue-200">
+            <KeyRound className="mt-0.5 h-3.5 w-3.5 flex-none" /> <span><strong>Instalasi awal:</strong> Windows meminta kredensial Administrator melalui UAC untuk menyiapkan UWF. Kredensial tidak pernah disimpan oleh LabKom.</span>
+          </div>
+
           <div className="mt-3 grid gap-2 text-[11px] text-slate-400 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-700 bg-slate-900/60 px-3 py-2">
               Windows: <span className="font-semibold text-slate-200">{status.product_name || 'Sedang diperiksa'}</span>

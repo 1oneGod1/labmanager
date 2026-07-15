@@ -11,6 +11,11 @@ tmp/
 *.exe
 *.AppImage
 *.dmg
+
+# NSIS source resources required to build the Student installer.
+!client/build/
+!client/build/installer.nsh
+!client/build/provisionUwf.ps1
 *.snap
 
 # Environment files

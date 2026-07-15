@@ -25,6 +25,26 @@ const preloadSource = readProjectFile('electron', 'preload.js');
 const panelSource = readProjectFile('src', 'DeepFreezePanel.jsx');
 const settingsSource = readProjectFile('src', 'ClientSettingsPanel.jsx');
 const appSource = readProjectFile('src', 'App.jsx');
+const installerSource = readProjectFile('build', 'installer.nsh');
+const provisionSource = readProjectFile('build', 'provisionUwf.ps1');
+const packageConfig = JSON.parse(readProjectFile('package.json'));
+
+assert.equal(packageConfig.build.nsis.perMachine, true);
+assert.equal(packageConfig.build.nsis.oneClick, false);
+assert.equal(packageConfig.build.nsis.include, 'build/installer.nsh');
+assert.match(installerSource, /!macro customInstall/);
+assert.match(installerSource, /\$\{ifNot\} \$\{isUpdated\}/);
+assert.match(installerSource, /File \/oname=\$PLUGINSDIR\\provisionUwf\.ps1/);
+assert.match(provisionSource, /Client-UnifiedWriteFilter/);
+assert.match(provisionSource, /'\/NoRestart'/);
+assert.match(provisionSource, /WindowsPrincipal/);
+assert.match(provisionSource, /credentials_stored = \$false/);
+assert.doesNotMatch(
+  provisionSource,
+  /uwfmgr(?:\.exe)?.*(?:filter\s+enable|volume\s+protect)/i,
+  'The installer may provision UWF but must never freeze the drive automatically.',
+);
+
 
 assert.match(
   mainSource,
@@ -36,6 +56,7 @@ assert.match(preloadSource, /getDeepFreezeStatus/);
 assert.match(preloadSource, /relaunchAsAdministrator/);
 assert.match(panelSource, /Password Kepala Lab/);
 assert.match(panelSource, /Izinkan Administrator/);
+assert.match(panelSource, /Kredensial tidak pernah disimpan/);
 assert.match(settingsSource, /<DeepFreezePanel/);
 assert.match(appSource, /onDeepFreezeConfigure=\{handleConfigureDeepFreeze\}/);
 const pendingFreeze = normalizeDeepFreezeStatus({
