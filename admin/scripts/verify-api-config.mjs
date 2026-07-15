@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { getApiBase } from '../src/apiConfig.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 assert.equal(getApiBase('file:'), 'http://localhost:3001');
 assert.equal(
@@ -9,5 +12,14 @@ assert.equal(
 );
 assert.equal(getApiBase('http:'), '');
 assert.equal(getApiBase('https:'), '');
+
+const scriptRoot = path.dirname(fileURLToPath(import.meta.url));
+const adminRoot = path.resolve(scriptRoot, '..');
+const electronSource = fs.readFileSync(path.join(adminRoot, 'electron', 'main.js'), 'utf8');
+const dashboardSource = fs.readFileSync(path.join(adminRoot, 'src', 'AdminDashboard.jsx'), 'utf8');
+assert.match(electronSource, /CLIENT_PAIRING_CODE/, 'Admin harus mempertahankan kode pairing pendek.');
+assert.match(electronSource, /randomInt\(0, 1_000_000\)/, 'Kode pairing harus dibuat sebagai 6 digit acak.');
+assert.match(dashboardSource, /pairing_code/, 'Dashboard harus membaca kode pairing dari backend.');
+assert.match(dashboardSource, /Kode Pairing PC Siswa/, 'Dashboard harus menampilkan kode pairing pendek.');
 
 console.log('Admin desktop API routing: PASS');

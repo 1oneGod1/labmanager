@@ -177,16 +177,18 @@ export function ClientSettingsModal({
           </div>
 
           <div>
-            <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"><KeyRound className="h-4 w-4 text-amber-300" /> Kunci pairing PC</label>
+            <label className="mb-2 flex items-center gap-2 text-sm font-semibold text-slate-200"><KeyRound className="h-4 w-4 text-amber-300" /> Kode pairing PC</label>
             <input
               type="password"
+              inputMode="numeric"
               value={draft.registrationKey}
               onChange={(event) => setDraft((current) => ({ ...current, registrationKey: event.target.value }))}
-              placeholder="Salin dari menu Server pada aplikasi Admin"
+              placeholder="Contoh: 123456"
               autoComplete="off"
+              maxLength={256}
               className="w-full rounded-xl border border-slate-700 bg-slate-800 px-4 py-3 font-mono text-sm text-white outline-none transition focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
             />
-            <p className="mt-1.5 text-xs text-slate-500">Kunci ini dibuat otomatis oleh Admin dan diperlukan untuk mendaftarkan PC ke server.</p>
+            <p className="mt-1.5 text-xs text-slate-500">Gunakan kode 6 digit dari menu Server di Admin. Client lama masih dapat memakai kunci panjang.</p>
           </div>
 
           <div className="grid gap-3 md:grid-cols-2">

@@ -7,7 +7,7 @@
   "scripts": {
     "dev:react": "vite",
     "build:react": "vite build",
-    "test": "node scripts/verify-lock-helper.js && node scripts/verify-emergency-password.js && node scripts/verify-deep-freeze.js",
+    "test": "node scripts/verify-lock-helper.js && node scripts/verify-emergency-password.js && node scripts/verify-deep-freeze.js && node scripts/verify-pairing-recovery.js",
     "electron:dev": "set \"ELECTRON_RUN_AS_NODE=\" && concurrently \"npm.cmd run dev:react\" \"wait-on http://localhost:5173 && electron .\"",
     "electron:build": "set \"ELECTRON_RUN_AS_NODE=\" && npm.cmd run build:react && electron-builder"
   },

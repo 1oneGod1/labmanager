@@ -1,6 +1,7 @@
 const crypto = require('crypto');
 
 const MIN_REGISTRATION_KEY_LENGTH = 32;
+const PAIRING_CODE_PATTERN = /^\d{6}$/;
 
 function constantTimeEqual(left, right) {
   const leftDigest = crypto.createHash('sha256').update(String(left || ''), 'utf8').digest();
@@ -8,8 +9,16 @@ function constantTimeEqual(left, right) {
   return crypto.timingSafeEqual(leftDigest, rightDigest);
 }
 
-function authorizeRegistration({ configuredKey, suppliedKey, isProduction }) {
+function normalizePairingCode(value) {
+  const text = String(value || '').trim();
+  if (PAIRING_CODE_PATTERN.test(text)) return text;
+  const digits = text.replace(/[\s-]/g, '');
+  return PAIRING_CODE_PATTERN.test(digits) ? digits : '';
+}
+
+function authorizeRegistration({ configuredKey, configuredPairingCode, suppliedKey, isProduction }) {
   const key = typeof configuredKey === 'string' ? configuredKey : '';
+  const pairingCode = normalizePairingCode(configuredPairingCode);
 
   if (isProduction && key.length < MIN_REGISTRATION_KEY_LENGTH) {
     return {
@@ -19,15 +28,24 @@ function authorizeRegistration({ configuredKey, suppliedKey, isProduction }) {
     };
   }
 
-  if (key && !constantTimeEqual(suppliedKey, key)) {
+  const suppliedCode = normalizePairingCode(suppliedKey);
+  const longKeyMatches = key && constantTimeEqual(suppliedKey, key);
+  const shortCodeMatches = pairingCode && suppliedCode && constantTimeEqual(suppliedCode, pairingCode);
+
+  if (key && !longKeyMatches && !shortCodeMatches) {
     return {
       ok: false,
       status: 403,
-      message: 'Kunci registrasi perangkat tidak valid.',
+      message: 'Kode pairing PC tidak valid. Salin kode 6 digit terbaru dari menu Server di aplikasi Admin.',
     };
   }
 
   return { ok: true };
 }
 
-module.exports = { authorizeRegistration, MIN_REGISTRATION_KEY_LENGTH };
+module.exports = {
+  authorizeRegistration,
+  normalizePairingCode,
+  MIN_REGISTRATION_KEY_LENGTH,
+  PAIRING_CODE_PATTERN,
+};

@@ -294,6 +294,7 @@ export default function AdminDashboard() {
   const [storageLoading, setStorageLoading] = useState(false);
   const [backupBusy, setBackupBusy] = useState(false);
   const [pairingKey, setPairingKey] = useState('');
+  const [pairingCode, setPairingCode] = useState('');
   const [branding, setBranding] = useState(DEFAULT_BRANDING);
 
   // Toast
@@ -481,10 +482,14 @@ export default function AdminDashboard() {
         apiFetch('/api/admin/pairing-key'),
       ]);
       if (storageResult.success) setStorageInfo(storageResult.data);
-      if (pairingResult.success) setPairingKey(pairingResult.data?.pairing_key || '');
+      if (pairingResult.success) {
+        setPairingKey(pairingResult.data?.pairing_key || '');
+        setPairingCode(pairingResult.data?.pairing_code || '');
+      }
     } catch {
       setStorageInfo(null);
       setPairingKey('');
+      setPairingCode('');
     } finally {
       setStorageLoading(false);
     }
@@ -1696,23 +1701,27 @@ export default function AdminDashboard() {
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-amber-800">
                 <ShieldCheck className="h-5 w-5" />
-                <h3 className="font-bold">Kunci Pairing PC Siswa</h3>
+                <h3 className="font-bold">Kode Pairing PC Siswa</h3>
               </div>
-              <p className="mt-1 text-sm text-amber-700">Masukkan kunci ini pada menu Pengaturan LabKom Siswa. Jangan bagikan di luar petugas lab.</p>
-              <p className="mt-3 break-all rounded-xl border border-amber-200 bg-white px-4 py-3 font-mono text-sm font-semibold text-slate-800">
-                {pairingKey || 'Memuat kunci pairing...'}
+              <p className="mt-1 text-sm text-amber-700">Masukkan kode 6 digit ini pada layar pairing aplikasi siswa. Kode tetap sama setelah Admin dimulai ulang.</p>
+              <p className="mt-3 inline-flex rounded-xl border border-amber-200 bg-white px-5 py-3 font-mono text-3xl font-bold tracking-[0.25em] text-slate-900">
+                {pairingCode || '------'}
               </p>
+              <details className="mt-3 text-xs text-amber-800">
+                <summary className="cursor-pointer font-semibold">Kompatibilitas client lama</summary>
+                <p className="mt-2 break-all rounded-lg border border-amber-200 bg-white p-3 font-mono text-slate-700">{pairingKey || 'Memuat kunci lama...'}</p>
+              </details>
             </div>
             <button
               type="button"
-              disabled={!pairingKey}
+              disabled={!pairingCode}
               onClick={async () => {
-                await navigator.clipboard.writeText(pairingKey);
-                showToast('Kunci pairing disalin.');
+                await navigator.clipboard.writeText(pairingCode);
+                showToast('Kode pairing 6 digit disalin.');
               }}
               className="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-300 bg-white px-4 py-2.5 text-sm font-semibold text-amber-800 hover:bg-amber-100 disabled:opacity-50"
             >
-              <Copy className="h-4 w-4" /> Salin Kunci
+              <Copy className="h-4 w-4" /> Salin Kode
             </button>
           </div>
         </div>

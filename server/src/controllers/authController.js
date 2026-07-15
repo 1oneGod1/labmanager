@@ -5,20 +5,35 @@ const { getClientRegistry, normalizePcName } = require('../services/clientRegist
 const { resolveMappedLabPc } = require('../services/labComputerService');
 const clientTokenService = require('../services/clientTokenService');
 const { authorizeRegistration } = require('../services/registrationKeyService');
+const { checkAllowed, registerFailure, clearFailures } = require('../services/adminRateLimitService');
 
 const loginLocks = new Set();
 
 // POST /api/auth/device-register
 function deviceRegister(req, res) {
   const { device_id, pc_name } = req.body || {};
+  const requestIp = req.ip || req.socket?.remoteAddress || 'unknown';
+  const rateLimitKey = `device-pairing:${requestIp}`;
+  const rate = checkAllowed(rateLimitKey);
+  if (!rate.allowed) {
+    return res.status(429).json({
+      success: false,
+      message: `Terlalu banyak percobaan pairing. Coba lagi dalam ${rate.retryAfterSec} detik.`,
+    });
+  }
   const authorization = authorizeRegistration({
     configuredKey: process.env.CLIENT_REGISTRATION_KEY,
+    configuredPairingCode: process.env.CLIENT_PAIRING_CODE,
     suppliedKey: req.headers['x-labkom-registration-key'],
     isProduction: process.env.NODE_ENV === 'production',
   });
   if (!authorization.ok) {
+    if (authorization.status === 403 && req.headers['x-labkom-registration-key']) {
+      registerFailure(rateLimitKey);
+    }
     return res.status(authorization.status).json({ success: false, message: authorization.message });
   }
+  clearFailures(rateLimitKey);
   const result = clientTokenService.issueToken({ device_id, pc_name });
   if (!result.ok) {
     return res.status(409).json({ success: false, message: result.message });

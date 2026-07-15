@@ -93,6 +93,7 @@ async function main() {
     'NODE_ENV=production',
     'ADMIN_PASSWORD=$2b$10$x7A71CHObExmQ7nqG0/pduYE1ye3TjjQqeMGa5qtWsA9q.ALnu6Te',
     'CLIENT_REGISTRATION_KEY=verification-key-12345678901234567890',
+    'CLIENT_PAIRING_CODE=654321',
     'LABKOM_DATA_PROVIDER=sqlite',
     '',
   ].join('\r\n'), 'utf8');
@@ -182,13 +183,17 @@ async function main() {
     }
 
     const pairing = await requestJson(port, '/api/admin/pairing-key', { headers: authHeaders });
-    if (pairing.status !== 200 || pairing.body?.data?.pairing_key !== 'verification-key-12345678901234567890') {
+    if (
+      pairing.status !== 200
+      || pairing.body?.data?.pairing_key !== 'verification-key-12345678901234567890'
+      || pairing.body?.data?.pairing_code !== '654321'
+    ) {
       throw new Error(`Kunci pairing paket gagal dibaca: HTTP ${pairing.status}`);
     }
 
     const device = await requestJson(port, '/api/auth/device-register', {
       method: 'POST',
-      headers: { 'X-LabKom-Registration-Key': pairing.body.data.pairing_key },
+      headers: { 'X-LabKom-Registration-Key': pairing.body.data.pairing_code },
       body: { device_id: '0123456789abcdef0123456789abcdef', pc_name: 'PC-VERIFY-01' },
     });
     if (device.status !== 200 || !device.body?.data?.token) {

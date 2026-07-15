@@ -64,6 +64,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Device token untuk socket auth (di-issue oleh main process) ──
   getClientToken: () => ipcRenderer.invoke('get-client-token'),
   refreshClientToken: () => ipcRenderer.invoke('refresh-client-token'),
+  getClientPairingStatus: () => ipcRenderer.invoke('get-client-pairing-status'),
+  pairClientDevice: (code) => ipcRenderer.invoke('pair-client-device', code),
 
   // Startup/health signal hanya dikirim setelah layar login/setup terbukti terlukis.
   reportRendererReady: (details = {}) => ipcRenderer.send('renderer-ready', {

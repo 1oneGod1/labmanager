@@ -231,13 +231,23 @@ async function createStorageBackup(req, res) {
 // GET /api/admin/pairing-key
 function getPairingKey(_req, res) {
   const pairingKey = String(process.env.CLIENT_REGISTRATION_KEY || '').trim();
+  const pairingCode = String(process.env.CLIENT_PAIRING_CODE || '').trim();
   if (pairingKey.length < 32) {
     return res.status(503).json({
       success: false,
       message: 'Kunci pairing belum tersedia. Buka ulang aplikasi Admin untuk membuatnya.',
     });
   }
-  return res.json({ success: true, data: { pairing_key: pairingKey } });
+  if (!/^\d{6}$/.test(pairingCode)) {
+    return res.status(503).json({
+      success: false,
+      message: 'Kode pairing belum tersedia. Buka ulang aplikasi Admin untuk membuatnya.',
+    });
+  }
+  return res.json({
+    success: true,
+    data: { pairing_code: pairingCode, pairing_key: pairingKey },
+  });
 }
 
 module.exports = {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Monitor, User, Key, Wifi, WifiOff, AlertCircle, Server, ArrowRight, RefreshCw, Download, Upload, X, Settings } from 'lucide-react';
+import { Monitor, User, Key, Wifi, WifiOff, AlertCircle, Server, ArrowRight, RefreshCw, Download, Upload, X, Settings, Link2 } from 'lucide-react';
 import { io } from 'socket.io-client';
 import LogoutWidget from './LogoutWidget.jsx';
 import AdminExitDialog from './AdminExitDialog.jsx';
@@ -72,6 +72,12 @@ export default function App() {
   const [time,           setTime]           = useState(new Date());
   const [isLoading,      setIsLoading]      = useState(false);
   const [error,          setError]          = useState('');
+  const [pairingStatus,  setPairingStatus]  = useState({
+    state: window.electronAPI?.getClientPairingStatus ? 'checking' : 'ready',
+    message: '',
+  });
+  const [pairingCode,    setPairingCode]    = useState('');
+  const [pairingBusy,    setPairingBusy]    = useState(false);
   const [serverOnline,   setServerOnline]   = useState(false);
   const [pcName,         setPcName]         = useState('PC-LAB-??');
   const [studentData,    setStudentData]    = useState(null);
@@ -286,6 +292,31 @@ export default function App() {
     return () => clearInterval(interval);
   }, [checkServer]);
 
+  useEffect(() => {
+    if (mode !== MODE_LOGIN || !serverOnline) return undefined;
+    if (!window.electronAPI?.getClientPairingStatus) {
+      setPairingStatus({ state: 'ready', message: '' });
+      return undefined;
+    }
+
+    let cancelled = false;
+    setPairingStatus((current) => current.state === 'ready'
+      ? current
+      : { state: 'checking', message: 'Memeriksa pairing PC dengan Admin...' });
+    settleWithin(window.electronAPI.getClientPairingStatus(), 8_000, null)
+      .then((result) => {
+        if (cancelled) return;
+        if (result?.paired) {
+          setPairingStatus({ state: 'ready', message: '' });
+        } else {
+          setPairingStatus({
+            state: 'required',
+            message: result?.message || 'Masukkan kode pairing 6 digit dari aplikasi Admin.',
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, [mode, serverOnline, serverUrl]);
   // ── Listener IPC dari Electron ──────────────────────────────────
   useEffect(() => {
     window.electronAPI?.onKioskOff((data) => {
@@ -579,8 +610,47 @@ export default function App() {
   }, []);
 
   // ── Handler Login ───────────────────────────────────────────────
+  const handlePairing = async (event) => {
+    event.preventDefault();
+    const code = pairingCode.replace(/\D/g, '').slice(0, 6);
+    if (!/^\d{6}$/.test(code)) {
+      setPairingStatus({ state: 'required', message: 'Kode pairing harus terdiri dari 6 digit.' });
+      return;
+    }
+    if (!window.electronAPI?.pairClientDevice) {
+      setPairingStatus({ state: 'required', message: 'Fitur pairing hanya tersedia pada aplikasi Windows.' });
+      return;
+    }
+
+    setPairingBusy(true);
+    const result = await settleWithin(
+      window.electronAPI.pairClientDevice(code),
+      10_000,
+      { success: false, message: 'Server tidak merespons permintaan pairing.' },
+    );
+    setPairingBusy(false);
+    if (result?.success) {
+      setClientSettings((current) => ({ ...current, registrationKey: code }));
+      setPairingStatus({ state: 'ready', message: '' });
+      setPairingCode('');
+      setError('');
+      return;
+    }
+    setPairingStatus({
+      state: 'required',
+      message: result?.message || 'Pairing PC gagal. Periksa kode dari aplikasi Admin.',
+    });
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (pairingStatus.state !== 'ready') {
+      setPairingStatus((current) => ({
+        state: 'required',
+        message: current.message || 'PC harus dipasangkan dengan Admin sebelum siswa dapat login.',
+      }));
+      return;
+    }
     if (!serverOnline) {
       setError('Server tidak dapat dijangkau. Hubungi teknisi lab.');
       return;
@@ -606,7 +676,13 @@ export default function App() {
           setMode(MODE_WIDGET);
         }
       } else {
-        setError(result.data?.message || 'Login gagal. Coba lagi.');
+        const message = result.data?.message || 'Login gagal. Coba lagi.';
+        if (/pairing|registrasi perangkat|token perangkat/i.test(message)) {
+          setPairingStatus({ state: 'required', message });
+          setError('');
+        } else {
+          setError(message);
+        }
       }
     } catch (err) {
       setError('Tidak bisa terhubung ke server. Periksa koneksi jaringan.');
@@ -1168,10 +1244,15 @@ export default function App() {
         {/* Kanan - Form Login */}
         <div className="p-10 bg-slate-900/80 flex flex-col justify-center">
           <div className="text-center mb-8">
-            <h3 className="text-2xl font-semibold text-white">Login Siswa</h3>
-            <p className="text-slate-400 mt-1">Gunakan NIS yang terdaftar</p>
+            <h3 className="text-2xl font-semibold text-white">
+              {pairingStatus.state === 'ready' ? 'Login Siswa' : 'Hubungkan PC ke Admin'}
+            </h3>
+            <p className="text-slate-400 mt-1">
+              {pairingStatus.state === 'ready' ? 'Gunakan NIS yang terdaftar' : 'Pairing hanya dilakukan satu kali untuk PC ini'}
+            </p>
           </div>
 
+          {pairingStatus.state === 'ready' ? (
           <form onSubmit={handleLogin} className="space-y-6">
             {/* Error message */}
             {error && (
@@ -1245,6 +1326,49 @@ export default function App() {
               )}
             </button>
           </form>
+          ) : pairingStatus.state === 'checking' ? (
+            <div className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-6 text-center text-blue-100">
+              <RefreshCw className="mx-auto h-8 w-8 animate-spin text-blue-300" />
+              <p className="mt-4 text-sm font-semibold">Memeriksa pairing perangkat...</p>
+              <p className="mt-1 text-xs text-blue-200/70">Pastikan aplikasi Admin sedang berjalan.</p>
+            </div>
+          ) : (
+            <form onSubmit={handlePairing} className="space-y-5">
+              {pairingStatus.message && (
+                <div className="flex items-start gap-2 rounded-xl border border-amber-400/40 bg-amber-500/15 p-3 text-sm text-amber-100">
+                  <AlertCircle className="mt-0.5 h-5 w-5 flex-none" />
+                  <span>{pairingStatus.message}</span>
+                </div>
+              )}
+              <div className="space-y-2">
+                <label className="ml-1 block text-sm font-medium text-slate-300">Kode Pairing 6 Digit</label>
+                <div className="relative">
+                  <Link2 className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={pairingCode}
+                    onChange={(event) => setPairingCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800/70 py-4 pl-12 pr-4 text-center font-mono text-2xl font-bold tracking-[0.35em] text-white outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-500/30"
+                    placeholder="000000"
+                    maxLength={6}
+                    autoComplete="off"
+                    autoFocus
+                    disabled={pairingBusy}
+                  />
+                </div>
+                <p className="text-center text-xs text-slate-500">Buka Admin → Server, lalu salin kode pairing yang tampil.</p>
+              </div>
+              <button
+                type="submit"
+                disabled={pairingBusy || pairingCode.length !== 6 || !serverOnline}
+                className="student-brand-button flex w-full items-center justify-center gap-2 rounded-xl py-4 text-lg font-semibold text-white shadow-lg transition disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {pairingBusy ? <RefreshCw className="h-5 w-5 animate-spin" /> : <Link2 className="h-5 w-5" />}
+                {pairingBusy ? 'Menghubungkan...' : 'Pasangkan PC'}
+              </button>
+            </form>
+          )}
 
           <div className="mt-8 text-center text-sm text-slate-500">
             <p>{branding.support_text}</p>

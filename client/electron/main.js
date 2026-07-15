@@ -146,12 +146,19 @@ function getClientSettingsPath() {
   return path.join(app.getPath('userData'), 'client.settings.json');
 }
 
+function normalizeClientRegistrationKey(value) {
+  const trimmed = String(value || '').trim();
+  const pairingCode = trimmed.replace(/[\s-]/g, '');
+  if (/^\d{6}$/.test(pairingCode)) return pairingCode;
+  return trimmed.slice(0, 256);
+}
+
 function sanitizeClientSettings(value = {}) {
   return {
     autoUpdate: value.autoUpdate !== false,
     openAtLogin: value.openAtLogin !== false,
     notifyUpdates: value.notifyUpdates !== false,
-    registrationKey: String(value.registrationKey || '').trim().slice(0, 256),
+    registrationKey: normalizeClientRegistrationKey(value.registrationKey),
   };
 }
 
@@ -393,6 +400,7 @@ function setStoredFaronicsPassword(password) {
 }
 
 let lastDeviceRegistrationError = '';
+let lastRejectedRegistrationCredential = null;
 
 // Minta token dari server. Resolve null kalau gagal.
 function requestDeviceToken(serverUrl) {
@@ -424,6 +432,7 @@ function requestDeviceToken(serverUrl) {
           const json = JSON.parse(buf);
           if (json?.success && json.data?.token) {
             lastDeviceRegistrationError = '';
+            lastRejectedRegistrationCredential = null;
             try {
               setStoredClientToken(json.data.token);
             } catch (error) {
@@ -434,6 +443,9 @@ function requestDeviceToken(serverUrl) {
             resolve(json.data.token);
           } else {
             lastDeviceRegistrationError = String(json?.message || 'Pairing PC ditolak server.').slice(0, 240);
+            if ([403, 429].includes(res.statusCode)) {
+              lastRejectedRegistrationCredential = registrationKey || '';
+            }
             log.warn('[DEVICE-AUTH] Register ditolak:', lastDeviceRegistrationError);
             resolve(null);
           }
@@ -466,6 +478,10 @@ async function ensureClientToken(serverUrl) {
   const stored = getStoredClientToken();
   if (stored) return stored;
   if (!serverUrl) return null;
+  const activeCredential = clientSettings.registrationKey || process.env.LABKOM_CLIENT_REGISTRATION_KEY || '';
+  if (lastRejectedRegistrationCredential !== null && lastRejectedRegistrationCredential === activeCredential) {
+    return null;
+  }
   if (!clientTokenRequestPromise) {
     clientTokenRequestPromise = requestDeviceToken(serverUrl)
       .finally(() => { clientTokenRequestPromise = null; });
@@ -474,6 +490,10 @@ async function ensureClientToken(serverUrl) {
 }
 async function refreshClientToken(serverUrl) {
   if (!serverUrl) return null;
+  const activeCredential = clientSettings.registrationKey || process.env.LABKOM_CLIENT_REGISTRATION_KEY || '';
+  if (lastRejectedRegistrationCredential !== null && lastRejectedRegistrationCredential === activeCredential) {
+    return null;
+  }
   if (!clientTokenRequestPromise) {
     setStoredClientToken(null);
     clientTokenRequestPromise = requestDeviceToken(serverUrl)
@@ -1443,6 +1463,76 @@ ipcMain.handle('refresh-client-token', async () => {
   const cfg = loadServerConfig();
   return await refreshClientToken(cfg.serverUrl);
 });
+ipcMain.handle('get-client-pairing-status', async () => {
+  const cfg = loadServerConfig();
+  let token = await ensureClientToken(cfg.serverUrl);
+  if (token && cfg.serverUrl) {
+    try {
+      const validationUrl = new URL(`${cfg.serverUrl}/api/auth/device-status`);
+      const validation = await performRendererApiRequest(validationUrl, { method: 'GET' }, token);
+      if (validation.status === 401) {
+        setStoredClientToken(null);
+        token = await refreshClientToken(cfg.serverUrl);
+      }
+    } catch {
+      // Server lama belum memiliki endpoint status. Token tetap dicoba saat login.
+    }
+  }
+  return {
+    paired: Boolean(token),
+    message: token
+      ? ''
+      : (lastDeviceRegistrationError || 'PC ini belum dipasangkan dengan aplikasi Admin.'),
+  };
+});
+ipcMain.handle('pair-client-device', async (_event, suppliedCode) => {
+  const pairingCode = normalizeClientRegistrationKey(suppliedCode);
+  if (!/^\d{6}$/.test(pairingCode)) {
+    return { success: false, message: 'Kode pairing harus terdiri dari 6 digit.' };
+  }
+
+  const cfg = loadServerConfig();
+  if (!cfg.serverUrl) {
+    return { success: false, message: 'Alamat server Admin belum dikonfigurasi.' };
+  }
+
+  if (clientTokenRequestPromise) await clientTokenRequestPromise.catch(() => null);
+  const previousSettings = clientSettings;
+  clientSettings = { ...previousSettings, registrationKey: pairingCode };
+  lastRejectedRegistrationCredential = null;
+  setStoredClientToken(null);
+  clientTokenRequestPromise = requestDeviceToken(cfg.serverUrl)
+    .finally(() => { clientTokenRequestPromise = null; });
+  const token = await clientTokenRequestPromise;
+  if (!token) {
+    clientSettings = previousSettings;
+    lastRejectedRegistrationCredential = previousSettings.registrationKey
+      || process.env.LABKOM_CLIENT_REGISTRATION_KEY
+      || '';
+    return {
+      success: false,
+      message: lastDeviceRegistrationError || 'Pairing PC ditolak server.',
+    };
+  }
+
+  try {
+    const saved = saveClientSettings({ ...previousSettings, registrationKey: pairingCode });
+    applyClientSettings(saved);
+  } catch (error) {
+    clientSettings = previousSettings;
+    log.warn('[DEVICE-AUTH] Kode pairing tidak dapat disimpan aman:', error.message);
+    return { success: false, message: 'Kode berhasil diverifikasi tetapi tidak dapat disimpan di Windows.' };
+  }
+
+  if (realtimeSocket) {
+    realtimeSocket.removeAllListeners();
+    realtimeSocket.disconnect();
+    realtimeSocket = null;
+  }
+  connectRealtime(cfg.serverUrl).catch(() => {});
+  startPresenceHeartbeat();
+  return { success: true, message: 'PC berhasil dipasangkan dengan aplikasi Admin.' };
+});
 
 
 // ── IPC: Verifikasi emergency password (offline exit) ────────────────────────────────
@@ -1500,8 +1590,9 @@ ipcMain.handle('save-client-settings', async (_event, payload = {}) => {
     startPresenceHeartbeat();
   }
 
-  if (String(payload.registrationKey || '').trim() !== previousRegistrationKey) {
+  if (normalizeClientRegistrationKey(payload.registrationKey) !== previousRegistrationKey) {
     setStoredClientToken(null);
+    lastRejectedRegistrationCredential = null;
   }
 
   try {

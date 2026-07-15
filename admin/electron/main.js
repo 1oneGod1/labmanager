@@ -66,6 +66,18 @@ function ensureClientRegistrationKey(envPath) {
     changed = true;
   }
 
+  // Kode pendek dipakai pada UI instalasi/pemulihan client. Kunci panjang
+  // tetap dipertahankan untuk kompatibilitas dengan client versi lama.
+  const pairingCode = content.match(/^CLIENT_PAIRING_CODE=(.*)$/m)?.[1]?.trim() || '';
+  if (!/^\d{6}$/.test(pairingCode)) {
+    content = upsertEnvValue(
+      content,
+      'CLIENT_PAIRING_CODE',
+      crypto.randomInt(0, 1_000_000).toString().padStart(6, '0'),
+    );
+    changed = true;
+  }
+
   // Secret terpisah membuat token perangkat tetap dapat diverifikasi setelah
   // backend restart, tanpa menyimpan token mentah di database lokal.
   const tokenSecret = content.match(/^CLIENT_TOKEN_SECRET=(.*)$/m)?.[1]?.trim() || '';
@@ -378,6 +390,7 @@ async function startServer() {
   // ADMIN_PASSWORD dari shell induk mengalahkan hasil migrasi dotenv.
   delete serverEnv.ADMIN_PASSWORD;
   delete serverEnv.CLIENT_REGISTRATION_KEY;
+  delete serverEnv.CLIENT_PAIRING_CODE;
   delete serverEnv.CLIENT_TOKEN_SECRET;
   if (!isDev) serverEnv.ELECTRON_RUN_AS_NODE = '1';
 
