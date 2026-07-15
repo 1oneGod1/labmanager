@@ -1019,7 +1019,28 @@ function registerAppShortcuts() {
 
 let currentLayoutMode = 'login';
 let attentionModeOn = false;
-let preAttentionLayoutMode = null;
+let adminScreenShareModeOn = false;
+let preFullscreenOverlayLayoutMode = null;
+
+function isFullscreenOverlayActive() {
+  return attentionModeOn || adminScreenShareModeOn;
+}
+
+function setFullscreenOverlayReason(reason, enabled) {
+  const wasActive = isFullscreenOverlayActive();
+  if (reason === 'attention') attentionModeOn = Boolean(enabled);
+  if (reason === 'screen-share') adminScreenShareModeOn = Boolean(enabled);
+  const isActive = isFullscreenOverlayActive();
+
+  if (!wasActive && isActive) {
+    preFullscreenOverlayLayoutMode = currentLayoutMode;
+    applyWindowLayout('login');
+  } else if (wasActive && !isActive) {
+    const restoreMode = preFullscreenOverlayLayoutMode || 'regular';
+    preFullscreenOverlayLayoutMode = null;
+    applyWindowLayout(restoreMode);
+  }
+}
 
 function applyWindowLayout(mode = 'regular') {
   if (!mainWindow || mainWindow.isDestroyed()) return;
@@ -2523,8 +2544,8 @@ ipcMain.on('login-success', (_event, studentData) => {
 ipcMain.on('resize-window', (_event, mode) => {
   if (!mainWindow) return;
   // Saat attention mode aktif, jangan ubah layout — simpan untuk restore nanti
-  if (attentionModeOn) {
-    preAttentionLayoutMode = mode;
+  if (isFullscreenOverlayActive()) {
+    preFullscreenOverlayLayoutMode = mode;
     return;
   }
   applyWindowLayout(mode);
@@ -2535,19 +2556,14 @@ ipcMain.on('resize-window', (_event, mode) => {
 // Saat disabled: kembalikan ke layout sebelumnya (widget/checklist)
 ipcMain.on('set-attention-mode', (_event, enabled) => {
   if (!mainWindow || mainWindow.isDestroyed()) return;
+  setFullscreenOverlayReason('attention', enabled);
+  log.info(`[ATTENTION] ${enabled ? 'Aktif' : 'Nonaktif'}`);
+});
 
-  if (enabled && !attentionModeOn) {
-    attentionModeOn = true;
-    preAttentionLayoutMode = currentLayoutMode;
-    applyWindowLayout('login');
-    log.info('[ATTENTION] Aktif — paksa kiosk lock');
-  } else if (!enabled && attentionModeOn) {
-    attentionModeOn = false;
-    const restoreMode = preAttentionLayoutMode || 'regular';
-    preAttentionLayoutMode = null;
-    applyWindowLayout(restoreMode);
-    log.info('[ATTENTION] Nonaktif — restore layout:', restoreMode);
-  }
+ipcMain.on('set-screen-share-mode', (_event, enabled) => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  setFullscreenOverlayReason('screen-share', enabled);
+  log.info(`[SCREEN-SHARE] ${enabled ? 'Fullscreen aktif' : 'Fullscreen nonaktif'}`);
 });
 
 // ── IPC: Logout →’ masuk kiosk lagi ───────────────────────────────

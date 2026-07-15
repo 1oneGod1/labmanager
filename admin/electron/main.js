@@ -5,7 +5,7 @@
 //  3. Expose info IP LAN ke renderer via IPC
 //  4. Auto-update via electron-updater (GitHub Releases / generic server)
 
-const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, session, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, session, protocol, net, desktopCapturer, screen } = require('electron');
 const path             = require('path');
 const { pathToFileURL } = require('url');
 const os               = require('os');
@@ -806,10 +806,56 @@ ipcMain.handle('export-reports-pdf', async () => {
   }
 });
 
+function isTrustedAdminOrigin(origin) {
+  try {
+    const parsed = new URL(String(origin || ''));
+    if (parsed.protocol === `${RENDERER_SCHEME}:` && parsed.hostname === 'app') return true;
+    return isDev && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function configureAdminDisplayCapture() {
+  const adminSession = session.defaultSession;
+  const isMainAdminContents = (webContents) => Boolean(
+    mainWindow
+    && !mainWindow.isDestroyed()
+    && webContents
+    && webContents.id === mainWindow.webContents.id
+  );
+
+  adminSession.setPermissionRequestHandler((webContents, permission, callback) => {
+    const allowed = permission === 'display-capture'
+      && isMainAdminContents(webContents)
+      && isTrustedAdminOrigin(webContents.getURL());
+    callback(allowed);
+  });
+  adminSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => (
+    permission === 'display-capture'
+    && isMainAdminContents(webContents)
+    && isTrustedAdminOrigin(requestingOrigin || webContents?.getURL())
+  ));
+  adminSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    if (!request.videoRequested || !request.userGesture || !isTrustedAdminOrigin(request.securityOrigin)) {
+      callback({});
+      return;
+    }
+    try {
+      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      const primaryDisplayId = String(screen.getPrimaryDisplay().id);
+      const selected = sources.find((source) => String(source.display_id) === primaryDisplayId) || sources[0];
+      callback(selected ? { video: selected } : {});
+    } catch (error) {
+      log.warn('[SCREEN-SHARE] Gagal memilih layar Admin:', error.message);
+      callback({});
+    }
+  });
+}
+
 app.whenReady().then(async () => {
   if (!isDev) registerRendererProtocol();
-  session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  configureAdminDisplayCapture();
   await startServer();   // ← Jalankan/detect backend terlebih dahulu
   startDiscoveryBroadcast(); // ← Mulai broadcast UDP agar client bisa temukan server
   createWindow();

@@ -14,15 +14,20 @@ export default function AdminScreenShare({ socket }) {
     if (!socket) return;
 
     const onStart = () => {
+      window.electronAPI?.setScreenShareMode?.(true);
       setActive(true);
       setFrame(null);
     };
 
     const onFrame = (data) => {
-      if (data?.image) setFrame(data.image);
+      if (!data?.image) return;
+      window.electronAPI?.setScreenShareMode?.(true);
+      setActive(true);
+      setFrame(data.image);
     };
 
     const onStop = () => {
+      window.electronAPI?.setScreenShareMode?.(false);
       setActive(false);
       setFrame(null);
     };
@@ -30,11 +35,14 @@ export default function AdminScreenShare({ socket }) {
     socket.on('admin:screen-share-start', onStart);
     socket.on('admin:screen-share-frame', onFrame);
     socket.on('admin:screen-share-stop',  onStop);
+    socket.on('disconnect', onStop);
 
     return () => {
       socket.off('admin:screen-share-start', onStart);
       socket.off('admin:screen-share-frame', onFrame);
       socket.off('admin:screen-share-stop',  onStop);
+      socket.off('disconnect', onStop);
+      window.electronAPI?.setScreenShareMode?.(false);
     };
   }, [socket]);
 

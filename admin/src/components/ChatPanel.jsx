@@ -40,6 +40,9 @@ export default function ChatPanel({ socket, onlineCount: externalOnlineCount = n
 
     const handleClientMessage = (data) => {
       const { pc_name, student_name, message: msg, timestamp } = data;
+      if (!msg) return;
+      setIsOpen(true);
+      setIsMinimized(false);
       setMessages((prev) => [
         ...prev,
         {

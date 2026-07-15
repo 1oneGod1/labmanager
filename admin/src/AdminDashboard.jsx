@@ -3081,7 +3081,7 @@ export default function AdminDashboard() {
   const renderBroadcastStudio = () => (
     <div className="h-full grid grid-cols-[minmax(0,1fr)_260px] gap-4 p-4 bg-[#eef3f9] overflow-y-auto">
       <div className="space-y-3">
-        <ScreenShareAdmin socket={realtimeSocket} />
+        <ScreenShareAdmin socket={realtimeSocket} onlineCount={onlineCount} />
       </div>
       <div className="space-y-3">
         <div className="bg-white border border-slate-200 rounded p-3">
@@ -3521,7 +3521,7 @@ export default function AdminDashboard() {
           {activeTab === 'history'   && renderHistory()}
           {activeTab === 'checks'    && renderChecks()}
           {activeTab === 'activities'  && <ActivityMonitor serverUrl={API} socket={realtimeSocket} />}
-          {activeTab === 'screenshare' && <ScreenShareAdmin socket={realtimeSocket} />}
+          {activeTab === 'screenshare' && <ScreenShareAdmin socket={realtimeSocket} onlineCount={onlineCount} />}
           {activeTab === 'server'      && renderServer()}
         </div>
       </main>

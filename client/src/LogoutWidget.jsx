@@ -13,7 +13,7 @@ function resizeElectron(mode) {
   window.electronAPI?.resizeWindow(mode);
 }
 
-export default function LogoutWidget({ studentData, serverOnline = true, onRequestPostCheck, onLogoutComplete }) {
+export default function LogoutWidget({ studentData, serverOnline = true, socket, pcName, onRequestPostCheck, onLogoutComplete }) {
   const [sessionTime,      setSessionTime]      = useState(0);
   const [isMinimized,      setIsMinimized]      = useState(false);
   const [isTeacherMode,    setIsTeacherMode]    = useState(false);
@@ -22,10 +22,11 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
 
   // Chat guru
   const [teacherPrompt,    setTeacherPrompt]    = useState('');
-  const [isTeacherTyping,  setIsTeacherTyping]  = useState(false);
-  const [chatHistory,      setChatHistory]      = useState([
-    { sender: 'teacher', text: 'Halo! Ada kendala dengan komputermu atau materi hari ini?' },
-  ]);
+  const [isChatSending,    setIsChatSending]    = useState(false);
+  const [chatStatus,       setChatStatus]       = useState('');
+  const [socketConnected,  setSocketConnected]  = useState(Boolean(socket?.connected));
+  const [unreadChat,       setUnreadChat]       = useState(0);
+  const [chatHistory,      setChatHistory]      = useState([]);
 
   // Lapor kendala
   const [reportCategory,   setReportCategory]   = useState('Hardware');
@@ -61,7 +62,7 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
     if (isTeacherMode && chatEndRef.current) {
       chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [chatHistory, isTeacherMode, isTeacherTyping]);
+  }, [chatHistory, isTeacherMode, isChatSending]);
 
   // ── Helpers buka mode & resize Electron ─────────────────────────
   const openRegular = useCallback(() => {
@@ -77,8 +78,85 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
     setIsReportMode(false);
     setIsViolationMode(false);
     setIsTeacherMode(true);
+    setUnreadChat(0);
     resizeElectron('expanded');
   }, []);
+
+  useEffect(() => {
+    if (!socket) {
+      setSocketConnected(false);
+      return undefined;
+    }
+
+    const updateConnection = () => setSocketConnected(socket.connected);
+    const handleAdminMessage = (data = {}) => {
+      const text = String(data.message || '').trim();
+      if (!text) return;
+      setChatHistory((previous) => {
+        if (data.id && previous.some((item) => item.id === data.id)) return previous;
+        return [...previous, {
+          id: data.id || `admin_${Date.now()}`,
+          sender: 'teacher',
+          text,
+          timestamp: data.timestamp || new Date().toISOString(),
+        }];
+      });
+      setChatStatus('Pesan baru dari Admin.');
+      setUnreadChat((count) => count + 1);
+      openTeacher();
+    };
+
+    updateConnection();
+    socket.on('connect', updateConnection);
+    socket.on('disconnect', updateConnection);
+    socket.on('chat:message-from-admin', handleAdminMessage);
+    return () => {
+      socket.off('connect', updateConnection);
+      socket.off('disconnect', updateConnection);
+      socket.off('chat:message-from-admin', handleAdminMessage);
+    };
+  }, [socket, openTeacher]);
+
+  const sendChatMessage = useCallback((rawMessage) => new Promise((resolve) => {
+    const message = String(rawMessage || '').trim();
+    if (!message) {
+      resolve(false);
+      return;
+    }
+    if (!socket?.connected) {
+      setSocketConnected(false);
+      setChatStatus('Chat belum terhubung ke server. Pesan belum dikirim; coba lagi setelah indikator Wi-Fi aktif.');
+      resolve(false);
+      return;
+    }
+
+    setIsChatSending(true);
+    setChatStatus('Mengirim pesan ke Admin...');
+    socket.timeout(8_000).emit('chat:reply-to-admin', {
+      message,
+      student_name: studentData?.nama_lengkap || null,
+      pc_name: pcName || studentData?.pc_name || null,
+      timestamp: new Date().toISOString(),
+    }, (error, response) => {
+      setIsChatSending(false);
+      if (error || !response?.success) {
+        setChatStatus(response?.error || 'Pesan gagal dikirim. Periksa koneksi lalu coba lagi.');
+        resolve(false);
+        return;
+      }
+
+      setChatHistory((previous) => [...previous, {
+        id: response.id || `student_${Date.now()}`,
+        sender: 'student',
+        text: message,
+        timestamp: new Date().toISOString(),
+      }]);
+      setChatStatus(response.admin_count > 0
+        ? 'Pesan sudah diterima aplikasi Admin.'
+        : 'Pesan diterima server, tetapi aplikasi Admin belum terhubung.');
+      resolve(true);
+    });
+  }), [socket, studentData?.nama_lengkap, studentData?.pc_name, pcName]);
 
   const openReport = useCallback(() => {
     setIsMinimized(false);
@@ -136,61 +214,38 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
   }, [onLogoutComplete, studentData, isLoggingOut]);
 
   // ── Chat Guru ──────────────────────────────────────────────────
-  const handleAskTeacher = (e) => {
+  const handleAskTeacher = async (e) => {
     e.preventDefault();
-    if (!teacherPrompt.trim()) return;
-    setChatHistory((prev) => [...prev, { sender: 'student', text: teacherPrompt }]);
-    setTeacherPrompt('');
-    setIsTeacherTyping(true);
-    setTimeout(() => {
-      setChatHistory((prev) => [
-        ...prev,
-        { sender: 'teacher', text: 'Baik, bapak sudah menerima pesanmu. Tunggu sebentar ya, bapak akan mengeceknya.' },
-      ]);
-      setIsTeacherTyping(false);
-    }, 2000);
+    const message = teacherPrompt.trim();
+    if (!message || isChatSending) return;
+    if (await sendChatMessage(message)) setTeacherPrompt('');
   };
 
-  // ── Lapor Kendala ──────────────────────────────────────────────
-  const handleSubmitReport = (e) => {
+  // Lapor Kendala
+  const handleSubmitReport = async (e) => {
     e.preventDefault();
-    if (!reportDetail.trim()) return;
-    const msg = `🚨 [LAPORAN KENDALA: ${reportCategory.toUpperCase()}]\n${reportDetail}`;
-    setChatHistory((prev) => [...prev, { sender: 'student', text: msg }]);
-    setReportDetail('');
+    if (!reportDetail.trim() || isChatSending) return;
+    const msg = `[LAPORAN KENDALA: ${reportCategory.toUpperCase()}]\n${reportDetail.trim()}`;
+    const sent = await sendChatMessage(msg);
+    if (sent) setReportDetail('');
     setIsReportMode(false);
     setIsTeacherMode(true);
-    setIsTeacherTyping(true);
-    setTimeout(() => {
-      setChatHistory((prev) => [
-        ...prev,
-        { sender: 'teacher', text: 'Laporan kerusakan sudah masuk. Mohon tunggu di tempatmu, teknisi akan segera datang.' },
-      ]);
-      setIsTeacherTyping(false);
-    }, 2000);
   };
 
-  // ── Lapor Pelanggaran ──────────────────────────────────────────
-  const handleSubmitViolation = (e) => {
+  // Lapor Pelanggaran
+  const handleSubmitViolation = async (e) => {
     e.preventDefault();
-    if (!violationDetail.trim()) return;
-    const msg = `🛑 [LAPORAN PELANGGARAN: ${violationCategory.toUpperCase()}]\n${violationDetail}`;
-    setChatHistory((prev) => [...prev, { sender: 'student', text: msg }]);
-    setViolationDetail('');
+    if (!violationDetail.trim() || isChatSending) return;
+    const msg = `[LAPORAN PELANGGARAN: ${violationCategory.toUpperCase()}]\n${violationDetail.trim()}`;
+    const sent = await sendChatMessage(msg);
+    if (sent) setViolationDetail('');
     setIsViolationMode(false);
     setIsTeacherMode(true);
-    setIsTeacherTyping(true);
-    setTimeout(() => {
-      setChatHistory((prev) => [
-        ...prev,
-        { sender: 'teacher', text: 'Terima kasih atas laporanmu. Identitasmu dirahasiakan. Bapak/Ibu guru akan segera mengawasi area tersebut.' },
-      ]);
-      setIsTeacherTyping(false);
-    }, 2000);
   };
 
   // ── Apakah konten body tampil ──────────────────────────────────
   const isExpanded = isTeacherMode || isReportMode || isViolationMode;
+  const realtimeReady = serverOnline && socketConnected;
 
   return (
     // Container transparan — window Electron sudah diposisikan di pojok kanan bawah
@@ -206,12 +261,12 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
             <div>
               <h3 className="flex items-center gap-1.5 text-white font-bold text-sm leading-tight">
                 {studentData?.pc_name || 'PC-LAB'}
-                {serverOnline ? <Wifi className="h-3.5 w-3.5 text-emerald-200" /> : <WifiOff className="h-3.5 w-3.5 text-amber-200" />}
+                {realtimeReady ? <Wifi className="h-3.5 w-3.5 text-emerald-200" /> : <WifiOff className="h-3.5 w-3.5 text-amber-200" />}
               </h3>
               {isMinimized ? (
                 <p className="text-blue-100 text-xs font-mono">{formatTime(sessionTime)}</p>
               ) : (
-                <p className="text-blue-100 text-xs">{serverOnline ? 'Sesi Aktif' : 'Server terputus - mencoba lagi'}</p>
+                <p className="text-blue-100 text-xs">{realtimeReady ? 'Sesi Aktif - realtime terhubung' : 'Server realtime terputus - mencoba lagi'}</p>
               )}
             </div>
           </div>
@@ -230,7 +285,7 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
             {/* Chat Guru */}
             <button onClick={openTeacher} title="Chat Guru" className="relative p-1.5 bg-amber-500/20 hover:bg-amber-500/40 rounded-lg text-amber-300 transition-colors">
               <MessageCircle className="w-4 h-4" />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              {unreadChat > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 grid place-items-center bg-red-500 text-[9px] text-white rounded-full">{unreadChat}</span>}
             </button>
             {/* Minimize */}
             <button onClick={toggleMinimize} title={isMinimized ? 'Perbesar' : 'Kecilkan'}
@@ -304,8 +359,11 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
                   </button>
                 </div>
                 <div className="flex-1 bg-slate-800/50 rounded-lg p-3 overflow-y-auto border border-slate-700/50 flex flex-col space-y-2 min-h-0">
+                  {chatHistory.length === 0 && (
+                    <p className="m-auto max-w-[90%] text-center text-xs leading-relaxed text-slate-400">Pesan akan dikirim langsung ke aplikasi Admin. Tidak ada balasan otomatis.</p>
+                  )}
                   {chatHistory.map((msg, i) => (
-                    <div key={i} className={`flex ${msg.sender === 'student' ? 'justify-end' : 'justify-start'}`}>
+                    <div key={msg.id || i} className={`flex ${msg.sender === 'student' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[80%] rounded-lg p-2.5 text-xs whitespace-pre-wrap ${
                         msg.sender === 'student'
                           ? 'bg-blue-600 text-white rounded-tr-none'
@@ -313,22 +371,21 @@ export default function LogoutWidget({ studentData, serverOnline = true, onReque
                       }`}>{msg.text}</div>
                     </div>
                   ))}
-                  {isTeacherTyping && (
-                    <div className="flex justify-start">
-                      <div className="bg-slate-700 rounded-lg rounded-tl-none p-2.5 flex items-center space-x-1">
-                        {[0, 0.2, 0.4].map((d, i) => (
-                          <span key={i} className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: `${d}s` }} />
-                        ))}
-                      </div>
+                  {isChatSending && (
+                    <div className="flex justify-end">
+                      <div className="bg-blue-600/70 rounded-lg rounded-tr-none px-3 py-2 text-xs text-blue-100">Mengirim...</div>
                     </div>
                   )}
                   <div ref={chatEndRef} />
                 </div>
+                {chatStatus && (
+                  <p className={`text-[11px] ${chatStatus.includes('diterima') ? 'text-emerald-400' : 'text-amber-300'}`}>{chatStatus}</p>
+                )}
                 <form onSubmit={handleAskTeacher} className="flex items-center space-x-2 flex-shrink-0">
                   <input type="text" value={teacherPrompt} onChange={(e) => setTeacherPrompt(e.target.value)}
                     placeholder="Ketik pesan untuk guru..." autoComplete="off"
                     className="flex-1 bg-slate-800 border border-slate-700 text-white text-xs rounded-lg px-3 py-2.5 focus:outline-none focus:border-amber-500" />
-                  <button type="submit" disabled={!teacherPrompt.trim()}
+                  <button type="submit" disabled={!teacherPrompt.trim() || isChatSending || !realtimeReady}
                     className="bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 text-white p-2.5 rounded-lg transition-colors">
                     <Send className="w-4 h-4" />
                   </button>

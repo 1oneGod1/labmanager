@@ -6,7 +6,6 @@ import AdminExitDialog from './AdminExitDialog.jsx';
 import CheckConditionForm from './CheckConditionForm.jsx';
 import PostSessionCheck from './PostSessionCheck.jsx';
 import AttentionModeOverlay from './AttentionModeOverlay.jsx';
-import ChatBubble from './ChatBubble.jsx';
 import AdminScreenShare from './AdminScreenShare.jsx';
 import { ClientSettingsModal, ClientUpdateNotice } from './ClientSettingsPanel.jsx';
 import { apiCall, settleWithin } from './api.js';
@@ -104,6 +103,7 @@ export default function App() {
   });
   const [deepFreezeBusy, setDeepFreezeBusy] = useState(false);
   const [branding, setBranding] = useState(loadCachedBranding);
+  const [rendererSocket, setRendererSocket] = useState(null);
   const autoSwitchingServerRef = useRef(false);
   const serverCheckInFlightRef = useRef(false);
   const socketRef = useRef(null);
@@ -418,6 +418,7 @@ export default function App() {
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
+        setRendererSocket(null);
       }
       return;
     }
@@ -535,6 +536,7 @@ export default function App() {
         });
 
         socketRef.current = socket;
+        setRendererSocket(socket);
         attachSocketListeners(socket);
       } catch (socketError) {
         console.error('[Socket] Gagal menyiapkan koneksi:', socketError);
@@ -549,6 +551,7 @@ export default function App() {
       clearTimeout(tokenRetryTimer);
       if (socket) socket.disconnect();
       socketRef.current = null;
+      setRendererSocket((current) => current === socket ? null : current);
     };
   }, [serverUrl, mode, pcName, studentData?.nama_lengkap, applyBranding]);
 
@@ -1038,7 +1041,7 @@ export default function App() {
   const sharedOverlays = (
     <>
       {settingsLayer}
-      <AdminScreenShare socket={socketRef.current} />
+      <AdminScreenShare socket={rendererSocket} />
       <AttentionModeOverlay
         enabled={attentionMode.enabled}
         message={attentionMode.message}
@@ -1116,6 +1119,8 @@ export default function App() {
         <LogoutWidget
           studentData={studentData}
           serverOnline={serverOnline}
+          socket={rendererSocket}
+          pcName={pcName}
           onRequestPostCheck={() => {
             window.electronAPI?.resizeWindow('checklist');
             setMode(MODE_POSTCHECK);
@@ -1129,11 +1134,6 @@ export default function App() {
               setStudentData(null);
             }
           }}
-        />
-        <ChatBubble
-          socket={socketRef.current}
-          studentName={studentData?.nama_lengkap || ''}
-          pcName={pcName}
         />
       </>
     );

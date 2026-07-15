@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Attention Mode: paksa kiosk + keyboard hook saat enabled ───
   setAttentionMode: (enabled) => ipcRenderer.send('set-attention-mode', enabled),
+  setScreenShareMode: (enabled) => ipcRenderer.send('set-screen-share-mode', enabled),
 
   // ── Device token untuk socket auth (di-issue oleh main process) ──
   getClientToken: () => ipcRenderer.invoke('get-client-token'),

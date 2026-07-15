@@ -282,20 +282,20 @@ function attachRealtimeHub(httpServer) {
       });
 
       // ── Admin Screen Share ─────────────────────────────────────
-      socket.on('admin:screen-share-start', () => {
-        // Notify all clients that admin started sharing
-        emitToClientChannel(io, 'renderer', 'admin:screen-share-start', {});
+      socket.on('admin:screen-share-start', (_data = {}, callback) => {
+        const count = emitToClientChannel(io, 'renderer', 'admin:screen-share-start', {});
+        callback?.({ success: true, count });
       });
 
       socket.on('admin:screen-share-frame', (data = {}) => {
-        if (!data.image) return;
-        // Relay frame to all clients
-        emitToClientChannel(io, 'renderer', 'admin:screen-share-frame', { image: data.image });
+        const image = String(data.image || '');
+        if (!image.startsWith('data:image/jpeg;base64,') || image.length > 1_900_000) return;
+        emitToClientChannel(io, 'renderer', 'admin:screen-share-frame', { image });
       });
 
-      socket.on('admin:screen-share-stop', () => {
-        // Notify all clients that admin stopped sharing
-        emitToClientChannel(io, 'renderer', 'admin:screen-share-stop', {});
+      socket.on('admin:screen-share-stop', (_data = {}, callback) => {
+        const count = emitToClientChannel(io, 'renderer', 'admin:screen-share-stop', {});
+        callback?.({ success: true, count });
       });
 
       // ── Attention Mode (Blank Screen) ──────────────────────────
@@ -410,25 +410,35 @@ function attachRealtimeHub(httpServer) {
     });
 
     // ── Chat: Client reply to admin ────────────────────────────
-    socket.on('chat:reply-to-admin', (data = {}) => {
-      const pcName = normalizePcName(socket.data.pc_name);
-      if (!pcName || !data.message) return;
+    socket.on('chat:reply-to-admin', (data = {}, callback) => {
+      const pcName = normalizePcName(socket.data.claimed_pc_name || socket.data.pc_name);
+      const message = String(data.message || '')
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, ' ')
+        .trim()
+        .slice(0, 2_000);
+      if (!pcName || !message) {
+        callback?.({ success: false, error: 'Pesan kosong atau identitas PC tidak valid.' });
+        return;
+      }
 
+      const studentName = String(data.student_name || socket.data.student_name || '')
+        .replace(/[\u0000-\u001F]/g, ' ')
+        .trim()
+        .slice(0, 120) || null;
       const payload = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         pc_name: pcName,
-        student_name: data.student_name || socket.data.student_name || null,
-        message: data.message,
+        student_name: studentName,
+        message,
         timestamp: data.timestamp || new Date().toISOString(),
       };
 
-      // Forward to all admins
+      const adminCount = io.sockets.adapter.rooms.get('admins')?.size || 0;
       io.to('admins').emit('chat:message-from-client', payload);
-
-      // Save to Firebase (async)
-      saveChatMessage({ ...payload, type: 'client_reply' }).catch(err => {
+      saveChatMessage({ ...payload, type: 'client_reply', delivered_to: adminCount }).catch(err => {
         console.error('[CHAT] Failed to save client reply:', err.message);
       });
+      callback?.({ success: true, id: payload.id, admin_count: adminCount });
     });
 
     // ── Client acknowledgement for attention mode ──────────────
