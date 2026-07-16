@@ -5,7 +5,7 @@
 //  3. Expose info IP LAN ke renderer via IPC
 //  4. Auto-update via electron-updater (GitHub Releases / generic server)
 
-const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, session, protocol, net, desktopCapturer, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, protocol, net, desktopCapturer, screen } = require('electron');
 const path             = require('path');
 const { pathToFileURL } = require('url');
 const os               = require('os');
@@ -479,6 +479,10 @@ function createWindow() {
     },
   });
 
+  // Pasang handler pada session yang benar segera setelah BrowserWindow dibuat,
+  // sebelum renderer sempat meminta tangkap layar.
+  configureAdminDisplayCapture(mainWindow);
+
   // Window security features
   mainWindow.setAlwaysOnTop(true, 'screen-saver');
   mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
@@ -816,36 +820,64 @@ function isTrustedAdminOrigin(origin) {
   }
 }
 
-function configureAdminDisplayCapture() {
-  const adminSession = session.defaultSession;
+function configureAdminDisplayCapture(adminWindow) {
+  const adminContents = adminWindow.webContents;
+  const adminSession = adminContents.session;
   const isMainAdminContents = (webContents) => Boolean(
-    mainWindow
-    && !mainWindow.isDestroyed()
-    && webContents
-    && webContents.id === mainWindow.webContents.id
+    webContents
+    && !adminWindow.isDestroyed()
+    && webContents.id === adminContents.id
+  );
+  const isTrustedPermissionRequest = (webContents, details = {}) => (
+    isMainAdminContents(webContents)
+    && isTrustedAdminOrigin(details.requestingUrl || details.securityOrigin || webContents.getURL())
   );
 
-  adminSession.setPermissionRequestHandler((webContents, permission, callback) => {
-    const allowed = permission === 'display-capture'
-      && isMainAdminContents(webContents)
-      && isTrustedAdminOrigin(webContents.getURL());
+  adminSession.setPermissionRequestHandler((webContents, permission, callback, details = {}) => {
+    // Electron 43 melaporkan getDisplayMedia sebagai permission `media`
+    // dengan mediaTypes kosong sebelum setDisplayMediaRequestHandler dipanggil.
+    // Kamera/mikrofon membawa mediaTypes dan tetap ditolak.
+    const isDisplayCapture = permission === 'display-capture'
+      || (permission === 'media'
+        && Array.isArray(details.mediaTypes)
+        && details.mediaTypes.length === 0);
+    const allowed = isDisplayCapture && isTrustedPermissionRequest(webContents, details);
+    log.info(`[SCREEN-SHARE] Permission ${permission}: ${allowed ? 'diizinkan' : 'ditolak'}`);
     callback(allowed);
   });
-  adminSession.setPermissionCheckHandler((webContents, permission, requestingOrigin) => (
+  adminSession.setPermissionCheckHandler((webContents, permission, requestingOrigin, details = {}) => (
     permission === 'display-capture'
     && isMainAdminContents(webContents)
-    && isTrustedAdminOrigin(requestingOrigin || webContents?.getURL())
+    && isTrustedAdminOrigin(details.requestingUrl || requestingOrigin || webContents?.getURL())
   ));
   adminSession.setDisplayMediaRequestHandler(async (request, callback) => {
-    if (!request.videoRequested || !request.userGesture || !isTrustedAdminOrigin(request.securityOrigin)) {
+    const mainFrame = adminContents.mainFrame;
+    const requestFrame = request.frame;
+    const isMainAdminFrame = Boolean(
+      requestFrame
+      && requestFrame.processId === mainFrame.processId
+      && requestFrame.routingId === mainFrame.routingId
+      && isTrustedAdminOrigin(requestFrame.url || request.securityOrigin)
+    );
+    if (!request.videoRequested || !isMainAdminFrame) {
+      log.warn('[SCREEN-SHARE] Permintaan sumber layar ditolak karena frame tidak tepercaya.');
       callback({});
       return;
     }
     try {
-      const sources = await desktopCapturer.getSources({ types: ['screen'] });
+      const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 0, height: 0 },
+      });
       const primaryDisplayId = String(screen.getPrimaryDisplay().id);
       const selected = sources.find((source) => String(source.display_id) === primaryDisplayId) || sources[0];
-      callback(selected ? { video: selected } : {});
+      if (!selected) {
+        log.warn('[SCREEN-SHARE] Electron tidak menemukan layar yang dapat ditangkap.');
+        callback({});
+        return;
+      }
+      log.info(`[SCREEN-SHARE] Menggunakan layar ${selected.name} (${selected.display_id || selected.id}).`);
+      callback({ video: selected });
     } catch (error) {
       log.warn('[SCREEN-SHARE] Gagal memilih layar Admin:', error.message);
       callback({});
@@ -855,7 +887,6 @@ function configureAdminDisplayCapture() {
 
 app.whenReady().then(async () => {
   if (!isDev) registerRendererProtocol();
-  configureAdminDisplayCapture();
   await startServer();   // ← Jalankan/detect backend terlebih dahulu
   startDiscoveryBroadcast(); // ← Mulai broadcast UDP agar client bisa temukan server
   createWindow();

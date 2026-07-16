@@ -156,7 +156,7 @@ export default function ScreenShareAdmin({ socket, onlineCount: externalOnlineCo
       if (stream && stream !== streamRef.current) stream.getTracks().forEach((track) => track.stop());
       stopSharing(serverStarted);
       if (captureError?.name === 'NotAllowedError') {
-        setError('Izin berbagi layar dibatalkan atau ditolak. Klik tombol lalu izinkan tangkap layar.');
+        setError('Tangkap layar ditolak oleh sistem. Tutup dan buka kembali Admin, lalu pastikan aplikasi sudah memakai versi terbaru.');
       } else {
         setError(`Gagal memulai berbagi layar: ${captureError?.message || 'kesalahan tidak diketahui'}`);
       }

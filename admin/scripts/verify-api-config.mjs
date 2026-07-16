@@ -31,6 +31,21 @@ assert.ok(
   'Panel detail monitoring harus dapat mengakses labPcOptions tanpa ReferenceError.',
 );
 assert.match(dashboardSource, /status === 'sleeping'/, 'Dashboard harus membedakan status sleep dari offline.');
+assert.match(
+  electronSource,
+  /permission === 'media'[\s\S]*details\.mediaTypes\.length === 0/,
+  'Tangkap layar Electron harus mengizinkan permission media tanpa kamera/mikrofon.',
+);
+assert.match(
+  electronSource,
+  /setDisplayMediaRequestHandler[\s\S]*callback\(\{ video: selected \}\)/,
+  'Admin harus memilih dan memberikan sumber layar ke getDisplayMedia.',
+);
+assert.match(
+  electronSource,
+  /configureAdminDisplayCapture\(mainWindow\)/,
+  'Handler tangkap layar harus dipasang pada session BrowserWindow Admin.',
+);
 
 assert.match(dashboardSource, /Kode Pairing PC Siswa/, 'Dashboard harus menampilkan kode pairing pendek.');
 
