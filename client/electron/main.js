@@ -2994,6 +2994,11 @@ app.on('browser-window-focus', (_event, window) => {
     focusRecoveryTimer = null;
   }
 });
+app.on('session-end', () => {
+  log.info('[APP] System session ending (shutdown/logout). Allowing quit and logging out active session...');
+  allowAppQuit = true;
+  logoutActiveSessionOnQuit();
+});
 app.on('before-quit', (event) => {
   if (!allowAppQuit) {
     preventUnexpectedQuit(event);

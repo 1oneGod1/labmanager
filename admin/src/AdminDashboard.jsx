@@ -2899,7 +2899,6 @@ export default function AdminDashboard() {
           <button disabled={!canReachPc(pc)} onClick={() => openRemoteForPc(pc)}><Eye />Remote</button>
           <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'lock', target: pc.actual_pc_name || pc.id, label: 'Kunci Windows' })}><Lock />Kunci</button>
           <button disabled={!canReachPc(pc)} className={attentionTargets[pc.actual_pc_name || pc.id] ? 'is-active' : ''} onClick={() => toggleTargetAttention(pc)}><Moon />{attentionTargets[pc.actual_pc_name || pc.id] ? 'Lepas blank' : 'Blank'}</button>
-          <button onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle />Pesan</button>
           <button onClick={() => setActiveTab('control')}><Globe />Buka web</button>
           <button onClick={() => setActiveTab('files')}><Upload />Kirim file</button>
           <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'sleep', target: pc.actual_pc_name || pc.id, label: 'Sleep' })}><Moon />Sleep</button>
@@ -2973,7 +2972,6 @@ export default function AdminDashboard() {
             <button className="labkom-action labkom-action-primary" disabled={!remotePc || !remoteScreen?.image} onClick={() => remotePc && downloadScreenSnapshot(remotePc)}><ImageIcon className="w-4 h-4" /><span>Snapshot</span></button>
             <button className="labkom-action" disabled={!canReachPc(remotePc)} onClick={() => remotePc && setConfirmSystemCommand({ command: 'lock', target: remotePc.actual_pc_name || remotePc.id, label: 'Kunci Windows' })}><Lock className="w-4 h-4" /><span>Kunci Windows</span></button>
             <button className={`labkom-action ${remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'is-active' : ''}`} disabled={!canReachPc(remotePc)} onClick={() => remotePc && toggleTargetAttention(remotePc)}><Moon className="w-4 h-4" /><span>{remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'Lepas blank' : 'Blank'}</span></button>
-            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))}><MessageCircle className="w-4 h-4" /><span>Pesan</span></button>
             <button className="labkom-action" onClick={() => fetchScreens()}><RefreshCw className="w-4 h-4" /><span>Refresh</span></button>
           </div>
         </section>
@@ -3398,8 +3396,6 @@ export default function AdminDashboard() {
             <div><strong>{serverOnline ? 'Server aktif' : 'Server terputus'}</strong><span>{serverInfo?.ip || 'localhost'}:{serverInfo?.port || 3001}</span></div>
           </div>
           <div className="labkom-header-actions">
-            <button className="labkom-action" onClick={() => setActiveTab('screenshare')} title="Siaran layar"><BookOpen /><span>Siaran</span></button>
-            <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-chat'))} title="Kirim pesan"><MessageCircle /><span>Pesan</span></button>
             <button className="labkom-action" onClick={() => window.dispatchEvent(new Event('labkom:open-attention'))} title="Fokuskan semua PC"><Lock /><span>Fokus</span></button>
             <button className="labkom-action" onClick={() => setShowPowerMenu(true)} title="Kontrol daya"><Power /><span>Daya</span></button>
             <div className="labkom-timebox">
@@ -3766,9 +3762,6 @@ export default function AdminDashboard() {
 
       {/* ─── Toast Notifikasi ─────────────────────────────────────────────── */}
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
-
-      {/* ─── Chat Panel (selalu mounted agar pesan tidak hilang saat ganti tab) ── */}
-      <ChatPanel socket={realtimeSocket} onlineCount={onlineCount} />
 
       {/* ─── Attention Mode (kunci layar semua siswa) ── */}
       <AttentionModeButton socket={realtimeSocket} />

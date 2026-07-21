@@ -282,11 +282,6 @@ export default function LogoutWidget({ studentData, serverOnline = true, socket,
               className="p-1.5 bg-red-500/20 hover:bg-red-500/40 rounded-lg text-red-300 transition-colors">
               <AlertTriangle className="w-4 h-4" />
             </button>
-            {/* Chat Guru */}
-            <button onClick={openTeacher} title="Chat Guru" className="relative p-1.5 bg-amber-500/20 hover:bg-amber-500/40 rounded-lg text-amber-300 transition-colors">
-              <MessageCircle className="w-4 h-4" />
-              {unreadChat > 0 && <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 grid place-items-center bg-red-500 text-[9px] text-white rounded-full">{unreadChat}</span>}
-            </button>
             {/* Minimize */}
             <button onClick={toggleMinimize} title={isMinimized ? 'Perbesar' : 'Kecilkan'}
               className="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors">
@@ -323,12 +318,8 @@ export default function LogoutWidget({ studentData, serverOnline = true, socket,
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={openTeacher}
-                    className="py-2.5 px-3 bg-amber-500/10 hover:bg-amber-500 hover:text-white text-amber-400 border border-amber-500/20 hover:border-amber-500 rounded-xl flex items-center justify-center space-x-2 transition-all text-xs font-medium">
-                    <BellRing className="w-4 h-4" /><span>Chat Guru</span>
-                  </button>
                   <button onClick={openReport}
-                    className="py-2.5 px-3 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 border border-red-500/20 hover:border-red-500 rounded-xl flex items-center justify-center space-x-2 transition-all text-xs font-medium">
+                    className="col-span-2 py-2.5 px-3 bg-red-500/10 hover:bg-red-500 hover:text-white text-red-400 border border-red-500/20 hover:border-red-500 rounded-xl flex items-center justify-center space-x-2 transition-all text-xs font-medium">
                     <AlertTriangle className="w-4 h-4" /><span>Lapor Kendala</span>
                   </button>
                   <button onClick={openViolation}

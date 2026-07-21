@@ -1043,7 +1043,6 @@ export default function App() {
   const sharedOverlays = (
     <>
       {settingsLayer}
-      <AdminScreenShare socket={rendererSocket} />
       <AttentionModeOverlay
         enabled={attentionMode.enabled}
         message={attentionMode.message}
