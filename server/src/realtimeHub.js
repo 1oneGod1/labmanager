@@ -19,7 +19,7 @@ const {
 const { normalizeControlSettings } = require('./services/controlPolicyService');
 
 const screenWatchers = new Map();
-const SYSTEM_COMMANDS = new Set(['lock', 'sleep', 'restart', 'shutdown']);
+const SYSTEM_COMMANDS = new Set(['lock', 'sleep', 'restart', 'shutdown', 'deactivate']);
 const DEEP_FREEZE_ACTIONS = new Set(['status', 'freeze', 'unfreeze']);
 const deepFreezeStatusByPc = new Map();
 

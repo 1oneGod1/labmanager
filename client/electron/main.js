@@ -2210,7 +2210,7 @@ function scheduleUwfAwarePowerAction(command) {
 function executeSystemCommand(payload = {}) {
   const command = String(payload.command || '').toLowerCase();
   const commandId = String(payload.id || '').trim();
-  const allowed = new Set(['lock', 'sleep', 'restart', 'shutdown']);
+  const allowed = new Set(['lock', 'sleep', 'restart', 'shutdown', 'deactivate']);
   if (!allowed.has(command) || !/^cmd_[A-Za-z0-9_-]{8,80}$/.test(commandId)) return;
   if (executedCommandIds.has(commandId)) return;
   executedCommandIds.add(commandId);
@@ -2244,6 +2244,12 @@ function executeSystemCommand(payload = {}) {
     sleepProcess.unref();
   } else if (command === 'restart' || command === 'shutdown') {
     scheduleUwfAwarePowerAction(command);
+  } else if (command === 'deactivate') {
+    log.info('[APP] Remote deactivation command received from Admin. Quitting client app...');
+    setTimeout(() => {
+      requestControlledQuit('Admin remote deactivation');
+      app.quit();
+    }, 1000);
   }
 }
 

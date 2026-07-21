@@ -2907,6 +2907,7 @@ export default function AdminDashboard() {
           <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'sleep', target: pc.actual_pc_name || pc.id, label: 'Sleep' })}><Moon />Sleep</button>
           <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'restart', target: pc.actual_pc_name || pc.id, label: 'Restart' })}><RefreshCw />Restart</button>
           <button disabled={!canReachPc(pc)} className="is-danger" onClick={() => setConfirmSystemCommand({ command: 'shutdown', target: pc.actual_pc_name || pc.id, label: 'Shutdown' })}><Power />Shutdown</button>
+          <button disabled={!canReachPc(pc)} onClick={() => setConfirmSystemCommand({ command: 'deactivate', target: pc.actual_pc_name || pc.id, label: 'Bypass Aplikasi' })}><PowerOff />Bypass</button>
           <button onClick={() => downloadScreenSnapshot(pc)}><ImageIcon />Snapshot</button>
           <button className="is-danger" onClick={() => handleForceLogout(pc)}><LogOut />Log off</button>
         </div>
@@ -2975,6 +2976,7 @@ export default function AdminDashboard() {
             <button className="labkom-action labkom-action-primary" disabled={!remotePc || !remoteScreen?.image} onClick={() => remotePc && downloadScreenSnapshot(remotePc)}><ImageIcon className="w-4 h-4" /><span>Snapshot</span></button>
             <button className="labkom-action" disabled={!canReachPc(remotePc)} onClick={() => remotePc && setConfirmSystemCommand({ command: 'lock', target: remotePc.actual_pc_name || remotePc.id, label: 'Kunci Windows' })}><Lock className="w-4 h-4" /><span>Kunci Windows</span></button>
             <button className={`labkom-action ${remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'is-active' : ''}`} disabled={!canReachPc(remotePc)} onClick={() => remotePc && toggleTargetAttention(remotePc)}><Moon className="w-4 h-4" /><span>{remotePc && attentionTargets[remotePc.actual_pc_name || remotePc.id] ? 'Lepas blank' : 'Blank'}</span></button>
+            <button className="labkom-action" disabled={!canReachPc(remotePc)} onClick={() => remotePc && setConfirmSystemCommand({ command: 'deactivate', target: remotePc.actual_pc_name || remotePc.id, label: 'Bypass Aplikasi' })}><PowerOff className="w-4 h-4" /><span>Bypass</span></button>
             <button className="labkom-action" onClick={() => fetchScreens()}><RefreshCw className="w-4 h-4" /><span>Refresh</span></button>
           </div>
         </section>
@@ -3560,6 +3562,9 @@ export default function AdminDashboard() {
               </button>
               <button onClick={() => { setShowPowerMenu(false); setConfirmKillAll('perm'); }} className="w-full p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-left hover:bg-red-500/20">
                 <strong className="block text-sm text-red-300">Hentikan permanen</strong><span className="text-xs text-slate-400">Client ditutup sampai perintah aktifkan dikirim oleh Admin.</span>
+              </button>
+              <button onClick={() => { setShowPowerMenu(false); setConfirmSystemCommand({ command: 'deactivate', target: 'all', label: 'Bypass Aplikasi (Hingga Reboot)' }); }} className="w-full p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left hover:bg-amber-500/20">
+                <strong className="block text-sm text-amber-300">Bypass Aplikasi (Hingga Reboot)</strong><span className="text-xs text-slate-400">Client ditutup sementara. Watchdog mati, tapi akan aktif lagi saat PC direstart.</span>
               </button>
               <button onClick={() => { setShowPowerMenu(false); handleEnableAll(); }} disabled={remoteBusy} className="w-full p-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 text-left hover:bg-emerald-500/20 disabled:opacity-50">
                 <strong className="block text-sm text-emerald-300">Aktifkan semua client</strong><span className="text-xs text-slate-400">Mengaktifkan kembali client yang sebelumnya dihentikan permanen.</span>
