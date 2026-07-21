@@ -7,6 +7,7 @@ const POLICY_KEYS = new Set([
   'blacklist',
   'wallpaper_url',
   'wallpaper_target',
+  'widget_hidden',
 ]);
 
 const DEFAULT_POLICY = Object.freeze({
@@ -18,6 +19,7 @@ const DEFAULT_POLICY = Object.freeze({
   blacklist: [],
   wallpaper_url: '',
   wallpaper_target: 'both',
+  widget_hidden: false,
 });
 
 function parseBoolean(value, fallback = false) {
@@ -90,6 +92,9 @@ function normalizeControlSettings(input = {}, { partial = false } = {}) {
     result.wallpaper_target = ['login', 'desktop', 'both'].includes(source.wallpaper_target)
       ? source.wallpaper_target
       : DEFAULT_POLICY.wallpaper_target;
+  }
+  if (shouldSet('widget_hidden')) {
+    result.widget_hidden = parseBoolean(source.widget_hidden, DEFAULT_POLICY.widget_hidden);
   }
 
   return Object.fromEntries(Object.entries(result).filter(([key]) => POLICY_KEYS.has(key)));

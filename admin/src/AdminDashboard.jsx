@@ -1163,6 +1163,7 @@ export default function AdminDashboard() {
   const [newBlockedWeb,    setNewBlockedWeb]    = useState('');
   const [wallpaperUrl,     setWallpaperUrl]     = useState('');
   const [wallpaperTarget,  setWallpaperTarget]  = useState('both');
+  const [widgetHidden,     setWidgetHidden]     = useState(false);
 
   const loadSettings = useCallback(async () => {
     setCtrlLoading(true);
@@ -1178,6 +1179,7 @@ export default function AdminDashboard() {
         setBlacklist(Array.isArray(s.blacklist) ? s.blacklist : []);
         setWallpaperUrl(s.wallpaper_url || '');
         setWallpaperTarget(s.wallpaper_target || 'both');
+        setWidgetHidden(s.widget_hidden === true || s.widget_hidden === 'true');
       }
     } catch { showToast('Gagal memuat pengaturan.', 'error'); }
     finally { setCtrlLoading(false); }
@@ -1199,6 +1201,7 @@ export default function AdminDashboard() {
         blacklist:          JSON.stringify(blacklist),
         wallpaper_url:      wallpaperUrl,
         wallpaper_target:   wallpaperTarget,
+        widget_hidden:      String(widgetHidden),
         ...extra,
       };
       const data = await apiFetch('/api/control/settings', {
@@ -3073,6 +3076,17 @@ export default function AdminDashboard() {
               <select value={wallpaperTarget} onChange={(event) => setWallpaperTarget(event.target.value)} className="w-full h-9 rounded-lg px-3 text-xs">
                 <option value="both">Login & desktop</option><option value="login">Layar login</option><option value="desktop">Desktop siswa</option>
               </select>
+            </section>
+            <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)] space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wider text-[var(--lab-text-3)]">Widget Siswa</p>
+                  <strong className="text-xs text-[var(--lab-text)]">{widgetHidden ? 'Disembunyikan' : 'Ditampilkan'}</strong>
+                </div>
+                <button onClick={() => setWidgetHidden(!widgetHidden)} className={`labkom-chip ${widgetHidden ? 'is-active' : ''}`}>
+                  {widgetHidden ? 'Tampilkan' : 'Sembunyikan'}
+                </button>
+              </div>
             </section>
             <section className="border border-[var(--lab-line)] rounded-xl p-3 bg-[var(--lab-panel)]">
               <div className="flex items-center justify-between text-xs"><span className="text-[var(--lab-text-3)]">Koneksi kebijakan</span><strong className={realtimeConnected ? 'text-emerald-400' : 'text-red-400'}>{realtimeConnected ? 'Realtime aktif' : 'Terputus'}</strong></div>

@@ -763,6 +763,16 @@ function keepWindowVisible() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (!rendererReady || allowAppQuit) return;
 
+  // Jika kebijakan menyembunyikan widget aktif, dan tidak sedang di form login/checklist, sembunyikan window
+  if (latestControlPolicy?.widget_hidden === true) {
+    if (currentLayoutMode !== 'login' && currentLayoutMode !== 'checklist') {
+      try {
+        mainWindow.hide();
+      } catch (_) {}
+      return;
+    }
+  }
+
   try {
     // Set always on top dengan level tertinggi
     mainWindow.setAlwaysOnTop(true, 'screen-saver', 1);
@@ -1735,6 +1745,7 @@ function normalizeClientPolicy(input = {}) {
     blacklist: domains(input.blacklist),
     wallpaper_url: /^https?:\/\//i.test(String(input.wallpaper_url || '').trim()) ? String(input.wallpaper_url).trim() : '',
     wallpaper_target: ['login', 'desktop', 'both'].includes(input.wallpaper_target) ? input.wallpaper_target : 'both',
+    widget_hidden: toBool(input.widget_hidden, false),
   };
 }
 
@@ -2065,6 +2076,8 @@ async function applyControlPolicy(policy) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('control-settings', normalized);
   }
+  // Segera sesuaikan visibilitas jendela
+  keepWindowVisible();
   const [volume, wallpaper, webFilter] = await Promise.all([
     applySystemVolume(normalized).catch(() => false),
     applyDesktopWallpaper(normalized).catch(() => false),
