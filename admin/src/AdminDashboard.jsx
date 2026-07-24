@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import StudentModal from './components/StudentModal.jsx';
 import ImportStudentsModal from './components/ImportStudentsModal.jsx';
+import { downloadStudentTemplateLocal } from './utils/templateGenerator.js';
 import ActivityMonitor from './components/ActivityMonitor.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import ScreenShareAdmin from './components/ScreenShareAdmin.jsx';
@@ -2409,13 +2410,12 @@ export default function AdminDashboard() {
           <button
             type="button"
             onClick={() => {
-              const anchor = document.createElement('a');
-              anchor.href = `${API}/api/students/template`;
-              anchor.setAttribute('download', 'Template_Import_Siswa_LabKom.xlsx');
-              document.body.appendChild(anchor);
-              anchor.click();
-              document.body.removeChild(anchor);
-              showToast('Mengunduh template import Excel...');
+              try {
+                downloadStudentTemplateLocal('xlsx');
+                showToast('Template Excel berhasil diunduh!');
+              } catch {
+                showToast('Gagal mengunduh template.', 'error');
+              }
             }}
             className="flex-1 md:flex-none px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl flex items-center justify-center space-x-2 text-xs font-semibold transition-colors border border-slate-700 shadow-sm"
             title="Unduh format template Excel untuk data login siswa"

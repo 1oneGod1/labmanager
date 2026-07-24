@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { adminJsonRequest, API_BASE } from '../apiConfig.js';
+import { downloadStudentTemplateLocal } from '../utils/templateGenerator.js';
 
 /**
  * Modal Import Data Siswa dari Berkas Excel (.xlsx, .xls) atau CSV
@@ -30,19 +31,11 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Fungsi untuk mengunduh template Excel / CSV
+  // Fungsi untuk mengunduh template Excel / CSV (100% lokal & instan)
   const handleDownloadTemplate = (format = 'xlsx') => {
     try {
-      const templatePath = `${API_BASE}/api/students/template?format=${format}`;
-      
-      const anchor = document.createElement('a');
-      anchor.href = templatePath;
-      anchor.setAttribute('download', `Template_Import_Siswa_LabKom.${format}`);
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-
-      showToast?.(`Mengunduh template ${format.toUpperCase()}...`);
+      downloadStudentTemplateLocal(format);
+      showToast?.(`Template ${format.toUpperCase()} berhasil diunduh!`);
     } catch {
       showToast?.('Gagal mengunduh template.', 'error');
     }
