@@ -224,6 +224,23 @@ function createDeepFreezeManager(options = {}) {
     path.join(String(env.ProgramFiles || 'C:\\Program Files'), 'Faronics', 'Deep Freeze Enterprise', 'DFC.exe'),
     path.join(String(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'), 'Faronics', 'Deep Freeze Enterprise', 'DFC.exe'),
   ];
+  const faronicsFiles = [
+    ...dfcCandidates,
+    path.join(systemRoot, 'System32', 'drivers', 'DeepFrz.sys'),
+    path.join(systemRoot, 'SysWOW64', 'drivers', 'DeepFrz.sys'),
+    path.join(systemRoot, 'System32', 'drivers', 'Thawbrd.sys'),
+    path.join(String(env.ProgramFiles || 'C:\\Program Files'), 'Faronics', 'Deep Freeze', 'DFServ.exe'),
+    path.join(String(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'), 'Faronics', 'Deep Freeze', 'DFServ.exe'),
+    path.join(String(env.ProgramFiles || 'C:\\Program Files'), 'Faronics', 'Deep Freeze Enterprise', 'DFServ.exe'),
+    path.join(String(env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)'), 'Faronics', 'Deep Freeze Enterprise', 'DFServ.exe'),
+  ];
+
+  function isFaronicsInstalled() {
+    if (findDfcPath()) return true;
+    return faronicsFiles.some((candidate) => {
+      try { return fsImpl.existsSync(candidate); } catch { return false; }
+    });
+  }
 
   function clearPending() {
     try {
@@ -381,6 +398,39 @@ function createDeepFreezeManager(options = {}) {
 
     const dfcPath = findDfcPath();
     if (dfcPath) return getFaronicsStatus(parsed, dfcPath);
+
+    if (isFaronicsInstalled()) {
+      const uwfStatus = normalizeDeepFreezeStatus(parsed, { platform });
+      if (uwfStatus.current_enabled || uwfStatus.next_enabled) {
+        runUwf(['filter', 'disable']).catch(() => {});
+      }
+      return {
+        success: true,
+        state: 'frozen',
+        provider: FARONICS_PROVIDER,
+        provider_label: 'Faronics Deep Freeze',
+        credential_configured: true,
+        requires_provider_password: false,
+        supported: true,
+        feature_installed: true,
+        provider_ready: true,
+        is_admin: parsed.is_admin === true,
+        can_configure: false,
+        current_enabled: true,
+        next_enabled: true,
+        current_protected: true,
+        next_protected: true,
+        current_frozen: true,
+        next_frozen: true,
+        restart_required: false,
+        overlay_consumption_mb: 0,
+        overlay_available_mb: 0,
+        product_name: String(parsed.product_name || '').slice(0, 160),
+        system_drive: /^[A-Za-z]:$/.test(String(parsed.system_drive || '')) ? String(parsed.system_drive).toUpperCase() : 'C:',
+        message: 'Faronics Deep Freeze terdeteksi terpasang pada Windows (UWF dinonaktifkan untuk mencegah bentrok).',
+        observed_at: Date.now(),
+      };
+    }
 
     const uwfStatus = normalizeDeepFreezeStatus(parsed, { platform });
     if (!uwfStatus.supported) {
@@ -634,6 +684,10 @@ function createDeepFreezeManager(options = {}) {
   }
 
   async function reconcilePending() {
+    if (isFaronicsInstalled()) {
+      clearPending();
+      return getStatus();
+    }
     const pending = loadPending();
     if (!pending) return getStatus();
     const status = await getStatus();

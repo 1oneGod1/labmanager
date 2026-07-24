@@ -748,6 +748,36 @@ function getTopRight(w, h) {
   return { x: sw - w - 20, y: 20 };
 }
 
+let netSupportActive = false;
+let netSupportCheckTimer = null;
+
+function checkNetSupportConflict() {
+  if (process.platform !== 'win32') return;
+  exec('powershell.exe -NoProfile -NonInteractive -Command "Get-Process -Name client32,pciinop,wictor,pcihsk -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ProcessName"', { timeout: 3000, windowsHide: true }, (err, stdout) => {
+    const isRunning = !err && /client32|pciinop|wictor|pcihsk/i.test(String(stdout || ''));
+    if (isRunning !== netSupportActive) {
+      netSupportActive = isRunning;
+      if (netSupportActive) {
+        log.info('[NETSUPPORT] NetSupport School terdeteksi aktif. Mengalah dan menghentikan focus-stealing agar layar siaran NetSupport tampil lancar.');
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          try {
+            mainWindow.setAlwaysOnTop(false);
+          } catch (_) {}
+        }
+      } else {
+        log.info('[NETSUPPORT] NetSupport School tidak lagi aktif. Memulihkan perlindungan window.');
+        if (isKioskLocked()) keepWindowVisible();
+      }
+    }
+  });
+}
+
+function startNetSupportMonitor() {
+  if (netSupportCheckTimer || process.platform !== 'win32') return;
+  checkNetSupportConflict();
+  netSupportCheckTimer = setInterval(checkNetSupportConflict, 5000);
+}
+
 function getCenter(w, h) {
   const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize;
   return { x: Math.round((sw - w) / 2), y: Math.round((sh - h) / 2) };
@@ -762,6 +792,14 @@ function isKioskLocked() {
 function keepWindowVisible() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (!rendererReady || allowAppQuit) return;
+
+  // Jika NetSupport School sedang aktif, jangan paksakan z-order screen-saver agar siaran layar NetSupport lancar tanpa error
+  if (netSupportActive) {
+    try {
+      mainWindow.setAlwaysOnTop(false);
+    } catch (_) {}
+    return;
+  }
 
   // Jika kebijakan menyembunyikan widget aktif, dan tidak sedang di form login/checklist, sembunyikan window
   if (latestControlPolicy?.widget_hidden === true) {
@@ -859,6 +897,7 @@ function startAggressiveFocusLoop() {
     if (!mainWindow || mainWindow.isDestroyed()) return;
 
     if (isKioskLocked()) {
+      if (netSupportActive) return;
       // Pastikan window selalu di depan dan fullscreen
       if (!mainWindow.isFocused()) {
         keepWindowVisible();
@@ -2454,7 +2493,9 @@ function postScreenshot() {
       req.end();
     } catch (_) {}
   }).catch((err) => {
-    logScreenWarning(`[SCREEN] Gagal capture layar: ${err.message}`);
+    if (!netSupportActive) {
+      logScreenWarning(`[SCREEN] Gagal capture layar: ${err.message}`);
+    }
   }).finally(() => {
     screenCaptureInFlight = false;
   });
@@ -2971,6 +3012,7 @@ app.whenReady().then(async () => {
   const initialConfig = loadServerConfig();
   if (initialConfig.serverUrl) connectRealtime(initialConfig.serverUrl);
   startPresenceHeartbeat();
+  startNetSupportMonitor();
 
   // Daftarkan MAC + mulai polling perintah remote setelah app siap
   setTimeout(() => {
