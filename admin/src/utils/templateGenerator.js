@@ -1,11 +1,11 @@
 import * as XLSX from 'xlsx';
 
 /**
- * Mengunduh berkas template data login siswa (.xlsx atau .csv) secara lokal
- * Menggunakan SheetJS (XLSX) yang sudah terintegrasi di frontend Admin.
- * Bekerja 100% di Electron desktop app, browser web, maupun mode offline.
+ * Mengunduh berkas template data login siswa (.xlsx atau .csv) secara otomatis.
+ * Jika berjalan di Electron App, berkas ditulis langsung ke C:\Users\<user>\Downloads\
+ * dan otomatis membuka lokasi berkas di File Explorer.
  */
-export function downloadStudentTemplateLocal(format = 'xlsx') {
+export async function downloadStudentTemplateLocal(format = 'xlsx') {
   try {
     const isCsv = String(format).toLowerCase() === 'csv';
     const fileExt = isCsv ? 'csv' : 'xlsx';
@@ -21,7 +21,6 @@ export function downloadStudentTemplateLocal(format = 'xlsx') {
       header: ['nis', 'nama_lengkap', 'kelas', 'password'],
     });
 
-    // Lebar kolom yang rapi untuk Excel
     worksheet['!cols'] = [
       { wch: 15 }, // nis
       { wch: 30 }, // nama_lengkap
@@ -32,11 +31,26 @@ export function downloadStudentTemplateLocal(format = 'xlsx') {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Siswa');
 
-    // XLSX.writeFile membuat Blob lokal & memicu dialog unduh secara otomatis
+    // 1. Jalur Utama: Jika di Electron App, gunakan IPC saveTemplateFile ke folder Downloads bawaan OS
+    if (typeof window !== 'undefined' && window.electronAPI?.saveTemplateFile) {
+      const base64Data = XLSX.write(workbook, {
+        type: 'base64',
+        bookType: isCsv ? 'csv' : 'xlsx',
+      });
+      const result = await window.electronAPI.saveTemplateFile({
+        fileName,
+        format: fileExt,
+        base64Data,
+      });
+      if (!result.success) throw new Error(result.message || 'Gagal menyimpan file ke Downloads.');
+      return { success: true, fileName, filePath: result.filePath };
+    }
+
+    // 2. Jalur Fallback: Jika dibuka di browser web biasa
     XLSX.writeFile(workbook, fileName, { bookType: isCsv ? 'csv' : 'xlsx' });
     return { success: true, fileName };
   } catch (error) {
     console.error('[TEMPLATE GENERATOR] Gagal mengunduh template:', error);
-    throw new Error('Gagal membuat berkas template Excel/CSV.');
+    throw error;
   }
 }

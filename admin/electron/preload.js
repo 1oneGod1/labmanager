@@ -1,9 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-  // Diagnostik startup renderer. Pesan hanya dikirim ke main process dan
-  // dicatat oleh electron-log agar kegagalan produksi tidak lagi menjadi
-  // layar putih tanpa petunjuk.
+  // Diagnostik startup renderer
   reportRendererReady: () => ipcRenderer.send('renderer-ready'),
   reportRendererError: (details) => ipcRenderer.send('renderer-error', {
     message: String(details?.message || 'Unknown renderer error').slice(0, 2000),
@@ -19,21 +17,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Listener: update status server dari main process
   onServerStatus: (cb) => ipcRenderer.on('server-status', (_e, data) => cb(data)),
 
-  // ── Remote Power Control ─────────────────────────────────────────────────
-  sendClientCmd:  (cmd, permanent, token) => ipcRenderer.invoke('send-client-cmd', cmd, permanent, token),
-  getClientMacs:  (token)                 => ipcRenderer.invoke('get-client-macs', token),
-  wakeOnLan:      (mac)            => ipcRenderer.invoke('wake-on-lan', mac),
-  saveCollectedFile: (payload)     => ipcRenderer.invoke('save-collected-file', payload),
-  exportReportsPdf:  ()            => ipcRenderer.invoke('export-reports-pdf'),
+  // Remote Power Control & File Management
+  sendClientCmd:     (cmd, permanent, token) => ipcRenderer.invoke('send-client-cmd', cmd, permanent, token),
+  getClientMacs:     (token)                 => ipcRenderer.invoke('get-client-macs', token),
+  wakeOnLan:         (mac)                   => ipcRenderer.invoke('wake-on-lan', mac),
+  saveCollectedFile: (payload)                => ipcRenderer.invoke('save-collected-file', payload),
+  saveTemplateFile:  (payload)                => ipcRenderer.invoke('save-template-file', payload),
+  exportReportsPdf:  ()                       => ipcRenderer.invoke('export-reports-pdf'),
 
-  // ── Auto-Update API ──────────────────────────────────────────────────────
-  // Cek apakah ada versi baru (dipanggil manual dari UI)
+  // Auto-Update API
   checkForUpdates:  ()  => ipcRenderer.invoke('check-for-updates'),
-  // Mulai download update (dipanggil setelah user konfirmasi)
   downloadUpdate:   ()  => ipcRenderer.send('download-update'),
-  // Install update sekarang (quit & restart)
   installUpdate:    ()  => ipcRenderer.send('install-update'),
-  // Listener: terima progress / status update dari main
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_e, data) => cb(data)),
 
   removeAllListeners: (ch) => ipcRenderer.removeAllListeners(ch),

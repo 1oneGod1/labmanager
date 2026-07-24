@@ -791,6 +791,27 @@ ipcMain.handle('save-collected-file', async (_event, payload = {}) => {
   }
 });
 
+ipcMain.handle('save-template-file', async (_event, payload = {}) => {
+  try {
+    const fileName = sanitizeCollectedName(payload.fileName, 'Template_Import_Siswa_LabKom.xlsx');
+    const match = String(payload.base64Data || '').match(/^(?:data:[^;,]{1,120};base64,)?([A-Za-z0-9+/=]+)$/);
+    if (!match) return { success: false, message: 'Format data template tidak valid.' };
+    const bytes = Buffer.from(match[1], 'base64');
+    if (!bytes.length) return { success: false, message: 'Data template kosong.' };
+
+    const downloadsFolder = app.getPath('downloads');
+    fs.mkdirSync(downloadsFolder, { recursive: true });
+    const targetPath = path.join(downloadsFolder, fileName);
+    fs.writeFileSync(targetPath, bytes);
+    log.info(`[TEMPLATE] Berkas template berhasil disimpan di: ${targetPath}`);
+    try { shell.showItemInFolder(targetPath); } catch {}
+    return { success: true, filePath: targetPath, fileName };
+  } catch (error) {
+    log.warn('[TEMPLATE] Gagal menyimpan template ke Downloads:', error.message);
+    return { success: false, message: 'Berkas template gagal disimpan di folder Downloads.' };
+  }
+});
+
 ipcMain.handle('export-reports-pdf', async () => {
   if (!mainWindow || mainWindow.isDestroyed()) return { success: false, message: 'Jendela Admin tidak tersedia.' };
   try {

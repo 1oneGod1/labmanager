@@ -31,13 +31,13 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Fungsi untuk mengunduh template Excel / CSV (100% lokal & instan)
-  const handleDownloadTemplate = (format = 'xlsx') => {
+  // Fungsi untuk mengunduh template Excel / CSV (IPC Node fs ke Downloads)
+  const handleDownloadTemplate = async (format = 'xlsx') => {
     try {
-      downloadStudentTemplateLocal(format);
-      showToast?.(`Template ${format.toUpperCase()} berhasil diunduh!`);
-    } catch {
-      showToast?.('Gagal mengunduh template.', 'error');
+      const res = await downloadStudentTemplateLocal(format);
+      showToast?.(res?.filePath ? `Template tersimpan di folder Downloads!` : `Template ${format.toUpperCase()} berhasil diunduh!`);
+    } catch (err) {
+      showToast?.(err.message || 'Gagal mengunduh template.', 'error');
     }
   };
 
