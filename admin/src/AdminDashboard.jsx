@@ -1061,8 +1061,15 @@ export default function AdminDashboard() {
     setStuLoading(true);
     try {
       const data = await apiFetch('/api/students');
-      if (data.success) setStudents(data.data);
-    } catch { showToast('Gagal memuat data siswa.', 'error'); }
+      if (data.success) {
+        setStudents(data.data || []);
+      } else {
+        showToast(data.message || 'Gagal memuat data siswa.', 'error');
+      }
+    } catch (err) {
+      console.error('[STUDENTS] fetchStudents error:', err);
+      showToast('Gagal terhubung ke server. Pastikan server berjalan.', 'error');
+    }
     finally { setStuLoading(false); }
   }, []);
 
