@@ -9,9 +9,10 @@ import {
   ClipboardList, FilterX, ThumbsUp, ThumbsDown, Eye, EyeOff, Maximize2,
   PowerOff, Play, Radio, Cpu, Activity, MessageCircle,
   BookOpen, FileText, FolderOpen, LayoutGrid, List, Upload, Trophy,
-  HardDrive, Archive,
+  HardDrive, Archive, FileSpreadsheet,
 } from 'lucide-react';
 import StudentModal from './components/StudentModal.jsx';
+import ImportStudentsModal from './components/ImportStudentsModal.jsx';
 import ActivityMonitor from './components/ActivityMonitor.jsx';
 import ChatPanel from './components/ChatPanel.jsx';
 import ScreenShareAdmin from './components/ScreenShareAdmin.jsx';
@@ -1052,6 +1053,7 @@ export default function AdminDashboard() {
   const [stuLoading,   setStuLoading]   = useState(false);
   const [stuSearch,    setStuSearch]    = useState('');
   const [stuModal,     setStuModal]     = useState(null); // null | 'add' | student obj
+  const [showImportModal, setShowImportModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
 
   const fetchStudents = useCallback(async () => {
@@ -2400,12 +2402,41 @@ export default function AdminDashboard() {
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
-        <button
-          onClick={() => setStuModal('add')}
-          className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center space-x-2 font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" /><span>Tambah Siswa</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          <button
+            type="button"
+            onClick={() => {
+              const anchor = document.createElement('a');
+              anchor.href = `${API}/api/students/template`;
+              anchor.setAttribute('download', 'Template_Import_Siswa_LabKom.xlsx');
+              document.body.appendChild(anchor);
+              anchor.click();
+              document.body.removeChild(anchor);
+              showToast('Mengunduh template import Excel...');
+            }}
+            className="flex-1 sm:flex-none px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg flex items-center justify-center space-x-1.5 text-sm font-medium transition-colors border border-slate-200"
+            title="Unduh format template Excel untuk data login siswa"
+          >
+            <DownloadCloud className="w-4 h-4 text-slate-500" />
+            <span>Template Excel</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowImportModal(true)}
+            className="flex-1 sm:flex-none px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center justify-center space-x-1.5 text-sm font-medium transition-colors shadow-sm"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Import Excel</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setStuModal('add')}
+            className="flex-1 sm:flex-none px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center justify-center space-x-1.5 text-sm font-medium transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Siswa</span>
+          </button>
+        </div>
       </div>
       {stuLoading ? (
         <div className="flex items-center justify-center py-24"><Loader2 className="w-8 h-8 text-blue-500 animate-spin" /></div>
@@ -3776,6 +3807,18 @@ export default function AdminDashboard() {
           student={stuModal === 'add' ? null : stuModal}
           onClose={() => setStuModal(null)}
           onSaved={() => { setStuModal(null); fetchStudents(); showToast('Data siswa berhasil disimpan.'); }}
+        />
+      )}
+
+      {/* ─── MODAL: Import Siswa dari Excel ──────────────────────────────── */}
+      {showImportModal && (
+        <ImportStudentsModal
+          onClose={() => setShowImportModal(false)}
+          onImported={() => {
+            setShowImportModal(false);
+            fetchStudents();
+          }}
+          showToast={showToast}
         />
       )}
 
