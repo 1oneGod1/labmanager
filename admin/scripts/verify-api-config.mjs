@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { getApiBase } from '../src/apiConfig.js';
+import { parseStudentCsv, spreadsheetRowsToRecords } from '../src/utils/studentImportParser.js';
+import { readSheet } from 'read-excel-file/universal';
+import { downloadStudentTemplateLocal } from '../src/utils/templateGenerator.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,4 +52,41 @@ assert.match(
 
 assert.match(dashboardSource, /Kode Pairing PC Siswa/, 'Dashboard harus menampilkan kode pairing pendek.');
 
-console.log('Admin desktop API routing: PASS');
+const parsedCsvStudents = parseStudentCsv(
+  '\uFEFFnis,nama_lengkap,kelas,password\r\n1001,"Siswa, Satu",X TKJ 1,pass123\r\n',
+);
+assert.equal(parsedCsvStudents.length, 1);
+assert.equal(parsedCsvStudents[0].nis, '1001');
+assert.equal(parsedCsvStudents[0].nama_lengkap, 'Siswa, Satu');
+assert.deepEqual(
+  spreadsheetRowsToRecords([
+    ['nis', 'nama_lengkap', 'kelas', 'password'],
+    [1002, 'Siswa Dua', 'X TKJ 2', 'pass456'],
+  ])[0],
+  { nis: 1002, nama_lengkap: 'Siswa Dua', kelas: 'X TKJ 2', password: 'pass456' },
+);
+assert.throws(
+  () => parseStudentCsv('nis,nama_lengkap\r\n1001,"Nama tanpa penutup'),
+  /tanda kutip belum ditutup/,
+);
+
+let savedTemplatePayload;
+globalThis.window = {
+  btoa: globalThis.btoa,
+  electronAPI: {
+    saveTemplateFile: async (payload) => {
+      savedTemplatePayload = payload;
+      return { success: true, filePath: 'C:/Temp/Template_Import_Siswa_LabKom.xlsx' };
+    },
+  },
+};
+const generatedTemplate = await downloadStudentTemplateLocal('xlsx');
+assert.equal(generatedTemplate.success, true);
+assert.equal(savedTemplatePayload.format, 'xlsx');
+const templateBytes = Uint8Array.from(Buffer.from(savedTemplatePayload.base64Data, 'base64'));
+const templateRows = await readSheet(templateBytes.buffer);
+assert.deepEqual(templateRows[0], ['nis', 'nama_lengkap', 'kelas', 'password']);
+assert.equal(templateRows[1][0], '1001');
+delete globalThis.window;
+
+console.log('Admin desktop API routing, student import, and template generation: PASS');

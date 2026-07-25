@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const XLSX = require('xlsx');
+const { readSheet } = require('read-excel-file/node');
 
 test('Import data siswa dari Excel/CSV dan pengunduhan template berfungsi dengan benar', async () => {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'labkom-import-test-'));
@@ -33,12 +33,11 @@ test('Import data siswa dari Excel/CSV dan pengunduhan template berfungsi dengan
     assert.equal(mockResXlsx.headers['Content-Type'], 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     assert.ok(mockResXlsx.body instanceof Buffer);
     
-    // Verifikasi bahwa buffer template dapat dibaca oleh SheetJS (XLSX)
-    const parsedWb = XLSX.read(mockResXlsx.body, { type: 'buffer' });
-    assert.equal(parsedWb.SheetNames[0], 'Data Siswa');
-    const parsedRows = XLSX.utils.sheet_to_json(parsedWb.Sheets['Data Siswa']);
-    assert.equal(parsedRows.length, 3);
-    assert.equal(parsedRows[0].nis, '1001');
+    // Verifikasi buffer template dengan parser XLSX yang juga digunakan aplikasi.
+    const parsedRows = await readSheet(mockResXlsx.body, 'Data Siswa');
+    assert.equal(parsedRows.length, 4);
+    assert.deepEqual(parsedRows[0], ['nis', 'nama_lengkap', 'kelas', 'password']);
+    assert.equal(parsedRows[1][0], '1001');
 
     // 2. Uji pengunduhan template CSV
     const mockResCsv = {

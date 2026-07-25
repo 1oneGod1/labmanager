@@ -1,4 +1,34 @@
-import * as XLSX from 'xlsx';
+import writeExcelFile from 'write-excel-file/universal';
+
+const TEMPLATE_HEADERS = ['nis', 'nama_lengkap', 'kelas', 'password'];
+const TEMPLATE_ROWS = [
+  ['1001', 'Ahmad Fauzi', 'XII TKJ 1', 'siswa123'],
+  ['1002', 'Budi Santoso', 'XII TKJ 2', 'siswa123'],
+  ['1003', 'Citra Dewi', 'XII RPL 1', 'siswa123'],
+];
+
+function csvEscape(value) {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+async function blobToBase64(blob) {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 32_768) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 32_768));
+  }
+  return window.btoa(binary);
+}
+
+function downloadBlob(blob, fileName) {
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = fileName;
+  anchor.click();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
 
 /**
  * Mengunduh berkas template data login siswa (.xlsx atau .csv) secara otomatis.
@@ -10,33 +40,22 @@ export async function downloadStudentTemplateLocal(format = 'xlsx') {
     const isCsv = String(format).toLowerCase() === 'csv';
     const fileExt = isCsv ? 'csv' : 'xlsx';
     const fileName = `Template_Import_Siswa_LabKom.${fileExt}`;
+    const blob = isCsv
+      ? new Blob(
+        [`\uFEFF${[TEMPLATE_HEADERS, ...TEMPLATE_ROWS].map((row) => row.map(csvEscape).join(',')).join('\r\n')}\r\n`],
+        { type: 'text/csv;charset=utf-8' },
+      )
+      : await writeExcelFile(
+        [TEMPLATE_HEADERS, ...TEMPLATE_ROWS],
+        {
+          sheet: 'Data Siswa',
+          columns: [{ width: 15 }, { width: 30 }, { width: 15 }, { width: 20 }],
+        },
+      ).toBlob();
 
-    const sampleData = [
-      { nis: '1001', nama_lengkap: 'Ahmad Fauzi', kelas: 'XII TKJ 1', password: 'siswa123' },
-      { nis: '1002', nama_lengkap: 'Budi Santoso', kelas: 'XII TKJ 2', password: 'siswa123' },
-      { nis: '1003', nama_lengkap: 'Citra Dewi', kelas: 'XII RPL 1', password: 'siswa123' },
-    ];
-
-    const worksheet = XLSX.utils.json_to_sheet(sampleData, {
-      header: ['nis', 'nama_lengkap', 'kelas', 'password'],
-    });
-
-    worksheet['!cols'] = [
-      { wch: 15 }, // nis
-      { wch: 30 }, // nama_lengkap
-      { wch: 15 }, // kelas
-      { wch: 20 }, // password
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Siswa');
-
-    // 1. Jalur Utama: Jika di Electron App, gunakan IPC saveTemplateFile ke folder Downloads bawaan OS
+    // Jalur utama Electron: tulis melalui IPC ke folder Downloads bawaan OS.
     if (typeof window !== 'undefined' && window.electronAPI?.saveTemplateFile) {
-      const base64Data = XLSX.write(workbook, {
-        type: 'base64',
-        bookType: isCsv ? 'csv' : 'xlsx',
-      });
+      const base64Data = await blobToBase64(blob);
       const result = await window.electronAPI.saveTemplateFile({
         fileName,
         format: fileExt,
@@ -46,8 +65,8 @@ export async function downloadStudentTemplateLocal(format = 'xlsx') {
       return { success: true, fileName, filePath: result.filePath };
     }
 
-    // 2. Jalur Fallback: Jika dibuka di browser web biasa
-    XLSX.writeFile(workbook, fileName, { bookType: isCsv ? 'csv' : 'xlsx' });
+    // Fallback saat dashboard dijalankan di browser biasa.
+    downloadBlob(blob, fileName);
     return { success: true, fileName };
   } catch (error) {
     console.error('[TEMPLATE GENERATOR] Gagal mengunduh template:', error);

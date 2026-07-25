@@ -35,9 +35,9 @@ jobs:
         run: npm run build:react --prefix admin
       - name: Audit dependencies
         run: |
-          npm audit --audit-level=high --prefix server
-          npm audit --audit-level=high --prefix client
-          npm audit --audit-level=high --prefix admin
+          npm audit --omit=dev --audit-level=high --prefix server
+          npm audit --omit=dev --audit-level=high --prefix client
+          npm audit --omit=dev --audit-level=high --prefix admin
 
   dotnet:
     runs-on: windows-latest

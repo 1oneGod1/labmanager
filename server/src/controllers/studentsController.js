@@ -1,6 +1,18 @@
 const bcrypt = require('bcryptjs');
-const XLSX = require('xlsx');
+const writeExcelFile = require('write-excel-file/node');
 const firebaseService = require('../services/dataService');
+
+const TEMPLATE_HEADERS = ['nis', 'nama_lengkap', 'kelas', 'password'];
+const TEMPLATE_ROWS = [
+  ['1001', 'Ahmad Fauzi', 'XII TKJ 1', 'siswa123'],
+  ['1002', 'Budi Santoso', 'XII TKJ 2', 'siswa123'],
+  ['1003', 'Citra Dewi', 'XII RPL 1', 'siswa123'],
+];
+
+function csvEscape(value) {
+  const text = String(value ?? '');
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
 
 // ══════════════════════════════════════════════════════════════════════════
 // STUDENTS CONTROLLER - STORAGE PROVIDER INDEPENDENT
@@ -36,34 +48,22 @@ async function downloadStudentTemplate(req, res) {
   try {
     const format = String(req.query.format || 'xlsx').toLowerCase();
 
-    const sampleData = [
-      { nis: '1001', nama_lengkap: 'Ahmad Fauzi', kelas: 'XII TKJ 1', password: 'siswa123' },
-      { nis: '1002', nama_lengkap: 'Budi Santoso', kelas: 'XII TKJ 2', password: 'siswa123' },
-      { nis: '1003', nama_lengkap: 'Citra Dewi', kelas: 'XII RPL 1', password: 'siswa123' },
-    ];
-
-    const worksheet = XLSX.utils.json_to_sheet(sampleData, {
-      header: ['nis', 'nama_lengkap', 'kelas', 'password'],
-    });
-
-    worksheet['!cols'] = [
-      { wch: 15 },
-      { wch: 30 },
-      { wch: 15 },
-      { wch: 20 },
-    ];
-
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Data Siswa');
-
     if (format === 'csv') {
-      const csvOutput = XLSX.utils.sheet_to_csv(worksheet);
+      const csvOutput = [TEMPLATE_HEADERS, ...TEMPLATE_ROWS]
+        .map((row) => row.map(csvEscape).join(','))
+        .join('\r\n');
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename=Template_Import_Siswa_LabKom.csv');
-      return res.send('\uFEFF' + csvOutput);
+      return res.send(`\uFEFF${csvOutput}\r\n`);
     }
 
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const buffer = await writeExcelFile(
+      [TEMPLATE_HEADERS, ...TEMPLATE_ROWS],
+      {
+        sheet: 'Data Siswa',
+        columns: [{ width: 15 }, { width: 30 }, { width: 15 }, { width: 20 }],
+      },
+    ).toBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=Template_Import_Siswa_LabKom.xlsx');
     return res.send(buffer);

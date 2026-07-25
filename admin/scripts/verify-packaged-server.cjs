@@ -45,6 +45,14 @@ function requestJson(port, requestPath, options = {}) {
       let responseBody = '';
       response.on('data', (chunk) => { responseBody += chunk; });
       response.on('end', () => {
+        if (responseBody.includes('ApprovedWebList.htm')) {
+          const error = new Error(
+            'Respons localhost diganti oleh filter jaringan lokal (ApprovedWebList/NetSupport).',
+          );
+          error.code = 'LABKOM_LOOPBACK_INTERCEPTED';
+          reject(error);
+          return;
+        }
         try {
           resolve({ status: response.statusCode, body: JSON.parse(responseBody) });
         } catch (error) {
@@ -52,7 +60,12 @@ function requestJson(port, requestPath, options = {}) {
         }
       });
     });
-    request.once('error', reject);
+    request.once('error', (error) => {
+      if (/Data after .*Connection: close/.test(String(error.message))) {
+        error.message += ' (kemungkinan respons localhost disisipi filter jaringan seperti NetSupport).';
+      }
+      reject(error);
+    });
     request.setTimeout(3000, () => request.destroy(new Error('Request timeout')));
     if (body) request.write(body);
     request.end();
@@ -61,15 +74,21 @@ function requestJson(port, requestPath, options = {}) {
 
 async function waitForServer(port, child, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
+  let lastError = null;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`Backend berhenti dengan kode ${child.exitCode}.`);
     try {
       const response = await requestJson(port, '/');
       if (response.status === 200) return response;
-    } catch {}
+      lastError = new Error(`Health check merespons HTTP ${response.status}.`);
+    } catch (error) {
+      if (error.code === 'LABKOM_LOOPBACK_INTERCEPTED') throw error;
+      lastError = error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
-  throw new Error('Backend paket tidak sehat setelah 20 detik.');
+  const detail = lastError?.message ? ` (${lastError.message})` : '';
+  throw new Error(`Backend paket tidak sehat setelah 20 detik.${detail}`);
 }
 
 async function main() {
@@ -77,7 +96,7 @@ async function main() {
   assertFile(executable, 'Executable Admin unpacked');
 
   const requireFromServer = createRequire(serverEntry);
-  for (const dependency of ['dotenv', 'express', 'cors', 'socket.io', 'bcryptjs']) {
+  for (const dependency of ['dotenv', 'express', 'cors', 'socket.io', 'bcryptjs', 'write-excel-file/node']) {
     const resolved = requireFromServer.resolve(dependency);
     if (!resolved.toLowerCase().startsWith(serverRoot.toLowerCase() + path.sep)) {
       throw new Error(`${dependency} tidak berasal dari paket server: ${resolved}`);
@@ -98,6 +117,7 @@ async function main() {
     '',
   ].join('\r\n'), 'utf8');
 
+  let stdout = '';
   let stderr = '';
   const child = spawn(executable, [serverEntry], {
     cwd: serverRoot,
@@ -112,6 +132,7 @@ async function main() {
     stdio: ['ignore', 'pipe', 'pipe'],
     windowsHide: true,
   });
+  child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
   child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
 
   try {
@@ -217,7 +238,8 @@ async function main() {
       throw new Error(`Backup SQLite paket gagal: HTTP ${backup.status}`);
     }
   } catch (error) {
-    const detail = stderr.trim() ? `\n${stderr.trim().slice(-2000)}` : '';
+    const output = [stdout.trim(), stderr.trim()].filter(Boolean).join('\n');
+    const detail = output ? `\n${output.slice(-4000)}` : '';
     throw new Error(`${error.message}${detail}`);
   } finally {
     if (child.exitCode === null) child.kill();

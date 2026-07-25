@@ -16,10 +16,11 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "socket.io": "^4.8.3",
-    "xlsx": "^0.18.5"
+    "write-excel-file": "^4.1.1"
   },
   "devDependencies": {
-    "nodemon": "^3.1.0"
+    "nodemon": "^3.1.0",
+    "read-excel-file": "^9.3.4"
   },
   "engines": {
     "node": ">=24.0.0"

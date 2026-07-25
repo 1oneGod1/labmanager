@@ -2410,7 +2410,7 @@ export default function AdminDashboard() {
           </div>
           <h3 className="text-xl font-bold text-white">Data Akun & Import Spreadsheet</h3>
           <p className="text-xs text-slate-400 mt-1 max-w-xl">
-            Kelola akun login siswa untuk praktikum. Anda dapat menambahkan siswa secara manual atau mengimpor data sekaligus dari berkas Excel (.xlsx, .xls) / CSV.
+            Kelola akun login siswa untuk praktikum. Anda dapat menambahkan siswa secara manual atau mengimpor data sekaligus dari berkas Excel (.xlsx) / CSV.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto shrink-0">

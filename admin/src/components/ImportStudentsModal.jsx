@@ -3,12 +3,17 @@ import {
   X, FileSpreadsheet, Download, Upload, CheckCircle2, AlertCircle,
   FileText, Loader2, RefreshCw, Check, AlertTriangle, Layers,
 } from 'lucide-react';
-import * as XLSX from 'xlsx';
-import { adminJsonRequest, API_BASE } from '../apiConfig.js';
+import { readSheet } from 'read-excel-file/universal';
+import { adminJsonRequest } from '../apiConfig.js';
 import { downloadStudentTemplateLocal } from '../utils/templateGenerator.js';
+import {
+  MAX_STUDENT_IMPORT_BYTES,
+  parseStudentCsv,
+  spreadsheetRowsToRecords,
+} from '../utils/studentImportParser.js';
 
 /**
- * Modal Import Data Siswa dari Berkas Excel (.xlsx, .xls) atau CSV
+ * Modal Import Data Siswa dari Berkas Excel (.xlsx) atau CSV
  * Props:
  *   onClose    - Callback untuk menutup modal
  *   onImported - Callback ketika import data siswa berhasil
@@ -41,13 +46,17 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
     }
   };
 
-  // Fungsi parsing berkas Excel/CSV
+  // Fungsi parsing berkas Excel/CSV dengan batas ukuran agar renderer tetap responsif.
   const processFile = async (selectedFile) => {
     if (!selectedFile) return;
 
     const fileName = selectedFile.name.toLowerCase();
-    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.xls') && !fileName.endsWith('.csv')) {
-      setError('Format berkas tidak didukung. Silakan gunakan .xlsx, .xls, atau .csv.');
+    if (!fileName.endsWith('.xlsx') && !fileName.endsWith('.csv')) {
+      setError('Format berkas tidak didukung. Silakan gunakan .xlsx atau .csv.');
+      return;
+    }
+    if (selectedFile.size > MAX_STUDENT_IMPORT_BYTES) {
+      setError('Ukuran berkas melebihi batas 5 MB.');
       return;
     }
 
@@ -56,12 +65,9 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
     setFile(selectedFile);
 
     try {
-      const dataBuffer = await selectedFile.arrayBuffer();
-      const workbook = XLSX.read(dataBuffer, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-
-      const rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      const rawJson = fileName.endsWith('.csv')
+        ? parseStudentCsv(await selectedFile.text())
+        : spreadsheetRowsToRecords(await readSheet(selectedFile));
 
       if (rawJson.length === 0) {
         setError('Berkas Excel/CSV kosong atau tidak berisi data.');
@@ -246,7 +252,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".xlsx, .xls, .csv"
+                accept=".xlsx, .csv"
                 onChange={handleFileChange}
                 className="hidden"
               />
@@ -255,7 +261,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
               </div>
               <div>
                 <p className="text-sm font-bold text-slate-800">Tarik & lepas berkas Excel / CSV di sini</p>
-                <p className="text-xs text-slate-400 mt-1">atau klik untuk memilih berkas (.xlsx, .xls, .csv)</p>
+                <p className="text-xs text-slate-400 mt-1">atau klik untuk memilih berkas (.xlsx, .csv)</p>
               </div>
             </div>
           ) : (
