@@ -12,6 +12,48 @@ export const API_BASE = typeof window !== 'undefined'
 
 export const REALTIME_API = API_BASE || 'http://localhost:3001';
 
+function headersToObject(headers = {}) {
+  if (typeof Headers !== 'undefined' && headers instanceof Headers) {
+    return Object.fromEntries(headers.entries());
+  }
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  return headers && typeof headers === 'object' ? { ...headers } : {};
+}
+
+function createIpcResponse(result = {}) {
+  const status = Number(result.status) || 0;
+  const body = result.data ?? {};
+  return {
+    ok: result.ok === true,
+    status,
+    headers: result.headers || {},
+    netSupportBypass: result.intercepted === true,
+    json: async () => {
+      if (typeof body !== 'string') return body;
+      return body ? JSON.parse(body) : {};
+    },
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+  };
+}
+
+export async function adminFetch(resource, options = {}) {
+  const desktopRequest = typeof window !== 'undefined'
+    && typeof window.electronAPI?.adminApiRequest === 'function';
+  if (!desktopRequest) return globalThis.fetch(resource, options);
+
+  if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+  const parsed = new URL(String(resource || ''), API_BASE || window.location.origin);
+  const apiPath = `${parsed.pathname}${parsed.search}`;
+  const result = await window.electronAPI.adminApiRequest(apiPath, {
+    method: options.method || 'GET',
+    headers: headersToObject(options.headers),
+    body: typeof options.body === 'string' ? options.body : '',
+    timeoutMs: 10_000,
+  });
+  if (options.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+  return createIpcResponse(result);
+}
+
 export async function adminJsonRequest(path, options = {}) {
   const {
     timeoutMs = 10_000,
@@ -23,7 +65,7 @@ export async function adminJsonRequest(path, options = {}) {
   const token = sessionStorage.getItem('admin_token');
 
   try {
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await adminFetch(`${API_BASE}${path}`, {
       ...fetchOptions,
       headers: {
         'Content-Type': 'application/json',

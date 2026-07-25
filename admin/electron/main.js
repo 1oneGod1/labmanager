@@ -9,11 +9,11 @@ const { app, BrowserWindow, ipcMain, shell, dialog, globalShortcut, protocol, ne
 const path             = require('path');
 const { pathToFileURL } = require('url');
 const os               = require('os');
-const http             = require('http');
 const dgram            = require('dgram');
 const { spawn }        = require('child_process');
 const fs               = require('fs');
 const crypto           = require('crypto');
+const { safeJsonRequest } = require('./netSupportHttp.cjs');
 
 const RENDERER_SCHEME = 'labkom';
 protocol.registerSchemesAsPrivileged([{
@@ -249,17 +249,16 @@ function clearServerRestartTimer() {
 
 // ─── Spawn Express server ───────────────────────────────────────────────────
 async function isServerRunning() {
-  return new Promise((resolve) => {
-    const req = http.request(
-      { host: '127.0.0.1', port: serverPort, path: '/', method: 'GET' },
-      (res) => { resolve(res.statusCode < 500); }
-    );
-    req.setTimeout(1500, () => { req.destroy(); resolve(false); });
-    req.on('error', () => resolve(false));
-    req.end();
-  });
+  try {
+    const result = await safeJsonRequest(`http://127.0.0.1:${serverPort}/`, {
+      timeoutMs: 1500,
+      maxBytes: 256 * 1024,
+    });
+    return result.status > 0 && result.status < 500;
+  } catch {
+    return false;
+  }
 }
-
 async function waitForServerReady(timeoutMs = 15000) {
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeoutMs) {
@@ -627,26 +626,27 @@ ipcMain.handle('restart-server', async () => {
 
 // Renderer minta ping IP tertentu
 ipcMain.handle('ping-server', async (_event, ip) => {
-  return new Promise((resolve) => {
-    const req = http.request(
-      { host: ip, port: serverPort, path: '/', method: 'GET' },
-      (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(body);
-            resolve({ reachable: true, labkom: !!json.message?.includes('Labkom'), statusCode: res.statusCode });
-          } catch { resolve({ reachable: true, labkom: false, statusCode: res.statusCode }); }
-        });
-      }
-    );
-    req.setTimeout(3000, () => { req.destroy(); resolve({ reachable: false, labkom: false }); });
-    req.on('error', () => resolve({ reachable: false, labkom: false }));
-    req.end();
-  });
+  const host = String(ip || '').trim();
+  const isPrivateHost = host === '127.0.0.1'
+    || /^10(?:\.\d{1,3}){3}$/.test(host)
+    || /^192\.168(?:\.\d{1,3}){2}$/.test(host)
+    || /^172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}$/.test(host);
+  if (!isPrivateHost) return { reachable: false, labkom: false };
+  try {
+    const result = await safeJsonRequest(`http://${host}:${serverPort}/`, {
+      timeoutMs: 3000,
+      maxBytes: 256 * 1024,
+    });
+    return {
+      reachable: result.status > 0 && result.status < 500,
+      labkom: Boolean(result.data?.message?.includes('Labkom')),
+      statusCode: result.status,
+      netSupportBypass: result.intercepted === true,
+    };
+  } catch {
+    return { reachable: false, labkom: false };
+  }
 });
-
 // ─── IPC Update ─────────────────────────────────────────────────────────────
 
 // Renderer minta cek update (misal dari tombol di UI)
@@ -670,37 +670,56 @@ ipcMain.on('install-update', () => {
 });
 
 // ─── IPC: Kirim perintah remote ke semua klien (via server) ────────────────
-function requestLocalServerJson({ path: requestPath, method = 'GET', body = null, token = null, timeoutMs = 5000, fallback = { success: false } }) {
-  return new Promise((resolve) => {
+async function requestLocalServerJson({ path: requestPath, method = 'GET', body = null, token = null, timeoutMs = 5000, fallback = { success: false } }) {
+  try {
     const bodyString = body ? JSON.stringify(body) : '';
     const headers = { 'Content-Type': 'application/json' };
-    if (bodyString) headers['Content-Length'] = Buffer.byteLength(bodyString);
     if (token) headers.Authorization = `Bearer ${token}`;
-
-    const req = http.request({
-      host: '127.0.0.1',
-      port: serverPort,
-      path: requestPath,
+    const result = await safeJsonRequest(`http://127.0.0.1:${serverPort}${requestPath}`, {
       method,
       headers,
-    }, (res) => {
-      let responseBody = '';
-      res.on('data', d => responseBody += d);
-      res.on('end', () => {
-        try {
-          resolve(JSON.parse(responseBody));
-        } catch {
-          resolve(fallback);
-        }
-      });
+      body: bodyString,
+      timeoutMs,
     });
-    req.on('error', () => resolve(fallback));
-    req.setTimeout(timeoutMs, () => { req.destroy(); resolve(fallback); });
-    if (bodyString) req.write(bodyString);
-    req.end();
-  });
+    if (result.intercepted) log.info(`[NETSUPPORT] Respons lokal dipulihkan: ${method} ${requestPath}`);
+    return result.data && typeof result.data === 'object' ? result.data : fallback;
+  } catch (error) {
+    log.warn(`[SERVER API] ${method} ${requestPath} gagal: ${error.message}`);
+    return fallback;
+  }
 }
 
+ipcMain.handle('admin-api-request', async (_event, requestPath, options = {}) => {
+  const normalizedPath = String(requestPath || '');
+  if (!/^\/api\/[A-Za-z0-9_./?=&%+-]{1,1000}$/.test(normalizedPath)) {
+    return { ok: false, status: 400, data: { success: false, message: 'Path API tidak valid.' } };
+  }
+  const method = String(options.method || 'GET').toUpperCase();
+  if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    return { ok: false, status: 405, data: { success: false, message: 'Method tidak diizinkan.' } };
+  }
+  const body = typeof options.body === 'string' ? options.body : '';
+  if (Buffer.byteLength(body) > 2 * 1024 * 1024) {
+    return { ok: false, status: 413, data: { success: false, message: 'Payload terlalu besar.' } };
+  }
+  const requestedHeaders = options.headers && typeof options.headers === 'object' ? options.headers : {};
+  const headers = { 'Content-Type': 'application/json' };
+  const authorization = requestedHeaders.Authorization || requestedHeaders.authorization;
+  if (authorization) headers.Authorization = String(authorization).slice(0, 8192);
+  try {
+    const result = await safeJsonRequest(`http://127.0.0.1:${serverPort}${normalizedPath}`, {
+      method,
+      headers,
+      body,
+      timeoutMs: Math.min(20_000, Math.max(1000, Number(options.timeoutMs) || 10_000)),
+      maxBytes: 4 * 1024 * 1024,
+    });
+    if (result.intercepted) log.info(`[NETSUPPORT] Respons Admin dipulihkan: ${method} ${normalizedPath}`);
+    return result;
+  } catch (error) {
+    return { ok: false, status: 0, data: { success: false, message: `Backend Admin tidak dapat dihubungi: ${error.message}` } };
+  }
+});
 ipcMain.handle('send-client-cmd', async (_ev, cmd, permanent = false, token = null) => {
   return requestLocalServerJson({
     path: '/api/client-cmd',

@@ -1,4 +1,7 @@
 import React, { useState, useEffect } from 'react';
+import { adminFetch } from '../apiConfig.js';
+
+const fetch = adminFetch;
 
 export default function ActivityMonitor({ socket, serverUrl }) {
   const [activities, setActivities] = useState([]);

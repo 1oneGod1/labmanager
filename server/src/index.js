@@ -45,6 +45,20 @@ const PORT = process.env.PORT || 3001;
 const server = http.createServer(app);
 app.disable('x-powered-by');
 
+// NetSupport Web Control dapat menyisipkan respons ApprovedWebList di depan
+// respons API. Header ini memungkinkan client LabKom memulihkan status HTTP
+// asli dari respons server tanpa menonaktifkan atau mematikan NetSupport.
+app.use((_req, res, next) => {
+  const originalWriteHead = res.writeHead;
+  res.writeHead = function writeHeadWithLabKomStatus(statusCode, ...args) {
+    if (!this.headersSent) {
+      this.setHeader('X-LabKom-Status', String(Number(statusCode) || this.statusCode || 200));
+    }
+    return originalWriteHead.call(this, statusCode, ...args);
+  };
+  next();
+});
+
 // =====================
 // Middleware
 // =====================

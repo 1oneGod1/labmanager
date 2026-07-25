@@ -13,6 +13,7 @@ const { io }          = require('socket.io-client');
 const ActivityMonitor = require('./activityMonitor');
 const { verifyEmergencyPassword } = require('./emergencyPassword');
 const { createDeepFreezeManager } = require('./deepFreezeManager');
+const { safeJsonRequest } = require('./netSupportHttp.cjs');
 
 const RENDERER_SCHEME = 'labkom';
 protocol.registerSchemesAsPrivileged([{
@@ -404,73 +405,51 @@ let lastDeviceRegistrationError = '';
 let lastRejectedRegistrationCredential = null;
 
 // Minta token dari server. Resolve null kalau gagal.
-function requestDeviceToken(serverUrl) {
-  return new Promise((resolve) => {
-    if (!serverUrl) return resolve(null);
-    let parsed;
-    try { parsed = new URL(`${serverUrl}/api/auth/device-register`); }
-    catch { return resolve(null); }
-    const body = JSON.stringify({
-      device_id: getOrCreateDeviceId(),
-      pc_name: os.hostname(),
-    });
-    const headers = { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) };
-    const registrationKey = clientSettings.registrationKey || process.env.LABKOM_CLIENT_REGISTRATION_KEY;
-    if (registrationKey) {
-      headers['X-LabKom-Registration-Key'] = registrationKey;
-    }
-    const req = http.request({
-      hostname: parsed.hostname,
-      port: parseInt(parsed.port) || 3001,
-      path: parsed.pathname,
+async function requestDeviceToken(serverUrl) {
+  if (!serverUrl) return null;
+  let targetUrl;
+  try { targetUrl = new URL(`${serverUrl}/api/auth/device-register`); }
+  catch { return null; }
+  const body = JSON.stringify({
+    device_id: getOrCreateDeviceId(),
+    pc_name: os.hostname(),
+  });
+  const headers = { 'Content-Type': 'application/json' };
+  const registrationKey = clientSettings.registrationKey || process.env.LABKOM_CLIENT_REGISTRATION_KEY;
+  if (registrationKey) headers['X-LabKom-Registration-Key'] = registrationKey;
+
+  try {
+    const result = await safeJsonRequest(targetUrl, {
       method: 'POST',
       headers,
-    }, (res) => {
-      let buf = '';
-      res.on('data', (d) => buf += d);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(buf);
-          if (json?.success && json.data?.token) {
-            lastDeviceRegistrationError = '';
-            lastRejectedRegistrationCredential = null;
-            try {
-              setStoredClientToken(json.data.token);
-            } catch (error) {
-              // Token tetap dapat dipakai untuk sesi berjalan, tetapi tidak pernah
-              // diturunkan menjadi penyimpanan teks biasa di production.
-              log.warn('[SECURITY] Token perangkat tidak dapat disimpan aman:', error.message);
-            }
-            resolve(json.data.token);
-          } else {
-            lastDeviceRegistrationError = String(json?.message || 'Pairing PC ditolak server.').slice(0, 240);
-            if ([403, 429].includes(res.statusCode)) {
-              lastRejectedRegistrationCredential = registrationKey || '';
-            }
-            log.warn('[DEVICE-AUTH] Register ditolak:', lastDeviceRegistrationError);
-            resolve(null);
-          }
-        } catch {
-          lastDeviceRegistrationError = 'Respons pairing dari server tidak valid.';
-          resolve(null);
-        }
-      });
+      body,
+      timeoutMs: 5000,
+      maxBytes: 512 * 1024,
     });
-    req.setTimeout(5000, () => {
-      lastDeviceRegistrationError = 'Server tidak merespons saat memperbarui pairing PC.';
-      req.destroy();
-      resolve(null);
-    });
-    req.on('error', (err) => {
-      lastDeviceRegistrationError = 'Pairing PC gagal karena server tidak dapat dijangkau.';
-      log.warn('[DEVICE-AUTH] Error:', err.message);
-      resolve(null);
-    });
-    req.write(body);
-    req.end();
-  });
+    const json = result.data;
+    if (json?.success && json.data?.token) {
+      lastDeviceRegistrationError = '';
+      lastRejectedRegistrationCredential = null;
+      try {
+        setStoredClientToken(json.data.token);
+      } catch (error) {
+        log.warn('[SECURITY] Token perangkat tidak dapat disimpan aman:', error.message);
+      }
+      if (result.intercepted) log.info('[NETSUPPORT] Respons pairing berhasil dipulihkan.');
+      return json.data.token;
+    }
+    lastDeviceRegistrationError = String(json?.message || 'Pairing PC ditolak server.').slice(0, 240);
+    if ([403, 429].includes(result.status)) lastRejectedRegistrationCredential = registrationKey || '';
+    log.warn('[DEVICE-AUTH] Register ditolak:', lastDeviceRegistrationError);
+    return null;
+  } catch (error) {
+    lastDeviceRegistrationError = /timeout/i.test(error.message)
+      ? 'Server tidak merespons saat memperbarui pairing PC.'
+      : 'Pairing PC gagal karena server tidak dapat dijangkau.';
+    log.warn('[DEVICE-AUTH] Error:', error.message);
+    return null;
+  }
 }
-
 // Pastikan ada token valid; kalau belum atau ditolak server, register ulang.
 // Satu promise dipakai bersama agar renderer dan main process tidak meminta dua
 // token berbeda saat aplikasi pertama kali dijalankan.
@@ -2224,25 +2203,43 @@ async function reconcileAndReportDeepFreezeStatus() {
   }
 }
 
-function scheduleUwfAwarePowerAction(command) {
+function scheduleUwfAwarePowerAction(command, acknowledge = () => {}) {
   const fallbackArgs = command === 'restart'
     ? ['/r', '/t', '0', '/c', 'Restart dijalankan oleh LabKom Admin.']
     : ['/s', '/t', '0', '/c', 'Shutdown dijalankan oleh LabKom Admin.'];
 
-  setTimeout(() => {
+  setTimeout(async () => {
     const fallback = () => {
       spawn('shutdown.exe', fallbackArgs, { detached: true, windowsHide: true, stdio: 'ignore' }).unref();
     };
-    if (!latestDeepFreezeStatus?.current_frozen) {
-      fallback();
-      return;
-    }
-    getDeepFreezeManager().safePowerAction(command)
-      .then((handled) => { if (!handled) fallback(); })
-      .catch((error) => {
-        log.warn('[DEEP-FREEZE] Power action UWF gagal, memakai shutdown.exe:', error.message);
+
+    try {
+      const status = await getDeepFreezeManager().getStatus();
+      emitDeepFreezeStatus(status, { action: 'status' });
+      if (status.uwf_conflict === true && status.uwf_deactivation_scheduled !== true) {
+        const message = 'Perintah daya diblokir: Faronics dan UWF masih bentrok. Jalankan LabKom Siswa sebagai Administrator dan periksa status kembali.';
+        log.error('[DEEP-FREEZE]', message);
+        acknowledge(false, message);
+        return;
+      }
+      if (!status.current_frozen) {
         fallback();
-      });
+        return;
+      }
+      const handled = await getDeepFreezeManager().safePowerAction(command);
+      if (!handled) fallback();
+    } catch (error) {
+      const unsafeConflict = latestDeepFreezeStatus?.uwf_conflict === true
+        && latestDeepFreezeStatus?.uwf_deactivation_scheduled !== true;
+      if (unsafeConflict) {
+        const message = 'Perintah daya diblokir karena status konflik Faronics/UWF tidak dapat diamankan.';
+        log.error('[DEEP-FREEZE]', message, error.message);
+        acknowledge(false, message);
+        return;
+      }
+      log.warn('[DEEP-FREEZE] Pemeriksaan daya gagal, memakai shutdown.exe:', error.message);
+      fallback();
+    }
   }, 15_000);
 }
 
@@ -2282,7 +2279,7 @@ function executeSystemCommand(payload = {}) {
     });
     sleepProcess.unref();
   } else if (command === 'restart' || command === 'shutdown') {
-    scheduleUwfAwarePowerAction(command);
+    scheduleUwfAwarePowerAction(command, acknowledge);
   } else if (command === 'deactivate') {
     log.info('[APP] Remote deactivation command received from Admin. Quitting client app...');
     setTimeout(() => {
@@ -2333,7 +2330,7 @@ async function connectRealtime(serverUrl) {
     }
 
     realtimeSocket = io(nextOrigin, {
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1_000,
       reconnectionDelayMax: 5_000,
@@ -2683,27 +2680,20 @@ ipcMain.on('quit-app', () => {
 // ── IPC: Verify server dari main process (bypass renderer fetch restriction) ──
 ipcMain.handle('verify-server', async (_event, url) => {
   if (!isAllowedLabServerUrl(url)) return { ok: false, labkom: false };
-  return new Promise((resolve) => {
-    const parsed = new URL(url);
-    const req = http.request(
-      { host: parsed.hostname, port: parseInt(parsed.port) || 3001, path: '/', method: 'GET' },
-      (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(body);
-            resolve({ ok: res.statusCode < 400, labkom: json.message?.includes('Labkom') });
-          } catch { resolve({ ok: res.statusCode < 400, labkom: false }); }
-        });
-      }
-    );
-    req.setTimeout(4000, () => { req.destroy(); resolve({ ok: false, labkom: false }); });
-    req.on('error', () => resolve({ ok: false, labkom: false }));
-    req.end();
-  });
+  try {
+    const result = await safeJsonRequest(`${new URL(url).origin}/`, {
+      timeoutMs: 4000,
+      maxBytes: 256 * 1024,
+    });
+    return {
+      ok: result.ok,
+      labkom: Boolean(result.data?.message?.includes('Labkom')),
+      netSupportBypass: result.intercepted === true,
+    };
+  } catch {
+    return { ok: false, labkom: false };
+  }
 });
-
 // ── IPC: Keluar dari setup screen (belum login, aman untuk keluar) ──
 ipcMain.on('exit-app', () => {
   requestControlledQuit('setup-exit');
@@ -2823,47 +2813,36 @@ function installWatchdog() {
 let cmdPollTimer = null;
 function startCmdPolling() {
   if (cmdPollTimer) return;
-  cmdPollTimer = setInterval(() => {
+  cmdPollTimer = setInterval(async () => {
     const cfg = loadServerConfig();
     if (!cfg.serverUrl) return;
     try {
-      const parsed = new URL(`${cfg.serverUrl}/api/client-cmd/current`);
-      const req = http.request({
-        hostname: parsed.hostname, port: parseInt(parsed.port) || 3001,
-        path: '/api/client-cmd/current', method: 'GET',
+      const result = await safeJsonRequest(`${cfg.serverUrl}/api/client-cmd/current`, {
+        method: 'GET',
         headers: { Authorization: `Bearer ${getStoredClientToken() || ''}` },
-      }, (res) => {
-        let body = '';
-        res.on('data', d => body += d);
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(body);
-            if (json.cmd === 'kill') {
-              log.info('[CMD] Perintah kill diterima  menutup aplikasi');
-              stopScreenShare();
-              if (json.permanent) {
-                const fp = path.join(app.getPath('userData'), 'disabled.flag');
-                fs.writeFileSync(fp, new Date().toISOString(), 'utf-8');
-                try { execSync('schtasks /Change /TN "LabKomWatchdog" /Disable', { timeout: 4000 }); } catch {}
-              }
-              requestControlledQuit(json.permanent ? 'remote-kill-permanent' : 'remote-kill');
-            } else if (json.cmd === 'enable') {
-              const fp = path.join(app.getPath('userData'), 'disabled.flag');
-              if (fs.existsSync(fp)) {
-                try { fs.unlinkSync(fp); } catch {}
-                try { execSync('schtasks /Change /TN "LabKomWatchdog" /Enable', { timeout: 4000 }); } catch {}
-              }
-            }
-          } catch {}
-        });
+        timeoutMs: 5000,
+        maxBytes: 256 * 1024,
       });
-      req.setTimeout(5000, () => req.destroy());
-      req.on('error', () => {});
-      req.end();
-    } catch (_) {}
+      const json = result.data;
+      if (json?.cmd === 'kill') {
+        log.info('[CMD] Perintah kill diterima - menutup aplikasi');
+        stopScreenShare();
+        if (json.permanent) {
+          const fp = path.join(app.getPath('userData'), 'disabled.flag');
+          fs.writeFileSync(fp, new Date().toISOString(), 'utf-8');
+          try { execSync('schtasks /Change /TN "LabKomWatchdog" /Disable', { timeout: 4000 }); } catch {}
+        }
+        requestControlledQuit(json.permanent ? 'remote-kill-permanent' : 'remote-kill');
+      } else if (json?.cmd === 'enable') {
+        const fp = path.join(app.getPath('userData'), 'disabled.flag');
+        if (fs.existsSync(fp)) {
+          try { fs.unlinkSync(fp); } catch {}
+          try { execSync('schtasks /Change /TN "LabKomWatchdog" /Enable', { timeout: 4000 }); } catch {}
+        }
+      }
+    } catch {}
   }, 10_000);
 }
-
 // ── Auto force-logout ke server saat app mau ditutup ─────────────
 function logoutActiveSessionOnQuit() {
   const cfg = loadServerConfig();
@@ -2901,52 +2880,31 @@ function isAllowedRendererApiUrl(parsed) {
   }
 }
 
-function performRendererApiRequest(parsed, options, clientToken) {
-  return new Promise((resolve) => {
-    const bodyStr = typeof options.body === 'string' ? options.body : '';
-    if (Buffer.byteLength(bodyStr) > 2 * 1024 * 1024) {
-      return resolve({ ok: false, status: 413, data: { success: false, message: 'Payload terlalu besar.' } });
-    }
-
-    const method = String(options.method || 'GET').toUpperCase();
-    if (!['GET', 'POST', 'PUT', 'DELETE'].includes(method)) {
-      return resolve({ ok: false, status: 405, data: { success: false, message: 'Method tidak diizinkan.' } });
-    }
-
-    const headers = { 'Content-Type': 'application/json' };
-    if (clientToken) headers.Authorization = `Bearer ${clientToken}`;
-    if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
-
-    const req = http.request({
-      hostname: parsed.hostname,
-      port: parseInt(parsed.port) || 3001,
-      path: parsed.pathname + (parsed.search || ''),
+async function performRendererApiRequest(parsed, options, clientToken) {
+  const bodyStr = typeof options.body === 'string' ? options.body : '';
+  if (Buffer.byteLength(bodyStr) > 2 * 1024 * 1024) {
+    return { ok: false, status: 413, data: { success: false, message: 'Payload terlalu besar.' } };
+  }
+  const method = String(options.method || 'GET').toUpperCase();
+  if (!['GET', 'POST', 'PUT', 'DELETE'].includes(method)) {
+    return { ok: false, status: 405, data: { success: false, message: 'Method tidak diizinkan.' } };
+  }
+  const headers = { 'Content-Type': 'application/json' };
+  if (clientToken) headers.Authorization = `Bearer ${clientToken}`;
+  try {
+    const result = await safeJsonRequest(parsed, {
       method,
       headers,
-    }, (res) => {
-      let body = '';
-      let bytes = 0;
-      res.on('data', (chunk) => {
-        bytes += chunk.length;
-        if (bytes > 2 * 1024 * 1024) {
-          req.destroy();
-          resolve({ ok: false, status: 502, data: { success: false, message: 'Respons server terlalu besar.' } });
-          return;
-        }
-        body += chunk;
-      });
-      res.on('end', () => {
-        try { resolve({ ok: res.statusCode < 400, status: res.statusCode, data: JSON.parse(body) }); }
-        catch { resolve({ ok: res.statusCode < 400, status: res.statusCode, data: body }); }
-      });
+      body: bodyStr,
+      timeoutMs: 8000,
+      maxBytes: 2 * 1024 * 1024,
     });
-    req.setTimeout(8000, () => { req.destroy(); resolve({ ok: false, status: 0, data: null }); });
-    req.on('error', () => resolve({ ok: false, status: 0, data: null }));
-    if (bodyStr) req.write(bodyStr);
-    req.end();
-  });
+    if (result.intercepted) log.info(`[NETSUPPORT] Respons API Siswa dipulihkan: ${method} ${parsed.pathname}`);
+    return result;
+  } catch {
+    return { ok: false, status: 0, data: null };
+  }
 }
-
 ipcMain.handle('api-request', async (_event, url, options = {}) => {
   let parsed;
   try { parsed = new URL(url); }

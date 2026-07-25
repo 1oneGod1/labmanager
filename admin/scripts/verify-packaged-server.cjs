@@ -1,9 +1,9 @@
 const fs = require('fs');
-const http = require('http');
 const net = require('net');
 const path = require('path');
 const { createRequire } = require('module');
 const { spawn } = require('child_process');
+const { safeJsonRequest } = require('../electron/netSupportHttp.cjs');
 
 const adminRoot = path.resolve(__dirname, '..');
 const unpackedRoot = path.join(adminRoot, 'dist-electron', 'win-unpacked');
@@ -26,52 +26,20 @@ function reservePort() {
   });
 }
 
-function requestJson(port, requestPath, options = {}) {
-  return new Promise((resolve, reject) => {
-    const body = options.body ? JSON.stringify(options.body) : '';
-    const request = http.request({
-      host: '127.0.0.1',
-      port,
-      path: requestPath,
-      method: options.method || 'GET',
-      headers: {
-        ...(options.headers || {}),
-        ...(body ? {
-        'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
-        } : {}),
-      },
-    }, (response) => {
-      let responseBody = '';
-      response.on('data', (chunk) => { responseBody += chunk; });
-      response.on('end', () => {
-        if (responseBody.includes('ApprovedWebList.htm')) {
-          const error = new Error(
-            'Respons localhost diganti oleh filter jaringan lokal (ApprovedWebList/NetSupport).',
-          );
-          error.code = 'LABKOM_LOOPBACK_INTERCEPTED';
-          reject(error);
-          return;
-        }
-        try {
-          resolve({ status: response.statusCode, body: JSON.parse(responseBody) });
-        } catch (error) {
-          reject(new Error(`Respons bukan JSON: ${responseBody.slice(0, 200)}`));
-        }
-      });
-    });
-    request.once('error', (error) => {
-      if (/Data after .*Connection: close/.test(String(error.message))) {
-        error.message += ' (kemungkinan respons localhost disisipi filter jaringan seperti NetSupport).';
-      }
-      reject(error);
-    });
-    request.setTimeout(3000, () => request.destroy(new Error('Request timeout')));
-    if (body) request.write(body);
-    request.end();
+async function requestJson(port, requestPath, options = {}) {
+  const body = options.body ? JSON.stringify(options.body) : '';
+  const result = await safeJsonRequest(`http://127.0.0.1:${port}${requestPath}`, {
+    method: options.method || 'GET',
+    headers: {
+      ...(options.headers || {}),
+      ...(body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body,
+    timeoutMs: 3000,
+    maxBytes: 4 * 1024 * 1024,
   });
+  return { status: result.status, body: result.data, intercepted: result.intercepted };
 }
-
 async function waitForServer(port, child, timeoutMs = 20000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;

@@ -527,7 +527,7 @@ export default function App() {
         }
 
         socket = io(serverUrl, {
-          transports: ['websocket', 'polling'],
+          transports: ['websocket'],
           auth: { role: 'client', client_token: clientToken, channel: 'renderer' },
           reconnection: true,
           reconnectionDelay: 1_000,

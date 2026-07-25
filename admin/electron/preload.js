@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerInfo:    ()     => ipcRenderer.invoke('get-server-info'),
   restartServer:    ()     => ipcRenderer.invoke('restart-server'),
   pingServer:       (ip)   => ipcRenderer.invoke('ping-server', ip),
+  adminApiRequest:  (path, options) => ipcRenderer.invoke('admin-api-request', path, options),
 
   // Listener: update status server dari main process
   onServerStatus: (cb) => ipcRenderer.on('server-status', (_e, data) => cb(data)),

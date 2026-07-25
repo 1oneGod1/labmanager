@@ -68,27 +68,44 @@ try {
   $principal = New-Object Security.Principal.WindowsPrincipal($identity)
   $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
-  # Jika workstation Faronics Enterprise sudah tersedia, LabKom memakai DFC
-  # dan tidak perlu mengaktifkan optional feature UWF.
-  $dfcCandidates = @(
+  # Jika Faronics tersedia, UWF tidak boleh dipasang atau diaktifkan. Deteksi
+  # menggunakan DFC, driver, executable layanan, dan registrasi service agar
+  # instalasi Standard/Enterprise serta instalasi kustom tetap fail-closed.
+  $faronicsMarkers = @(
     (Join-Path $env:SystemRoot 'SysWOW64\DFC.exe'),
     (Join-Path $env:SystemRoot 'System32\DFC.exe'),
-    (Join-Path $env:ProgramFiles 'Faronics\Deep Freeze Enterprise\DFC.exe')
+    (Join-Path $env:ProgramFiles 'Faronics\Deep Freeze Enterprise\DFC.exe'),
+    (Join-Path $env:SystemRoot 'System32\drivers\DeepFrz.sys'),
+    (Join-Path $env:SystemRoot 'System32\drivers\Thawbrd.sys'),
+    (Join-Path $env:ProgramFiles 'Faronics\Deep Freeze\DFServ.exe'),
+    (Join-Path $env:ProgramFiles 'Faronics\Deep Freeze Enterprise\DFServ.exe'),
+    (Join-Path $env:ProgramFiles 'Faronics\Deep Freeze Enterprise\DFInit.exe')
   )
   if (${env:ProgramFiles(x86)}) {
-    $dfcCandidates += Join-Path ${env:ProgramFiles(x86)} 'Faronics\Deep Freeze Enterprise\DFC.exe'
+    $faronicsMarkers += Join-Path ${env:ProgramFiles(x86)} 'Faronics\Deep Freeze Enterprise\DFC.exe'
+    $faronicsMarkers += Join-Path ${env:ProgramFiles(x86)} 'Faronics\Deep Freeze\DFServ.exe'
+    $faronicsMarkers += Join-Path ${env:ProgramFiles(x86)} 'Faronics\Deep Freeze Enterprise\DFServ.exe'
+    $faronicsMarkers += Join-Path ${env:ProgramFiles(x86)} 'Faronics\Deep Freeze Enterprise\DFInit.exe'
   }
-  $dfcPath = $dfcCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
-  if ($dfcPath) {
+  $faronicsMarker = $faronicsMarkers | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+  $dfcPath = $faronicsMarkers | Where-Object { $_ -like '*\DFC.exe' -and (Test-Path -LiteralPath $_) } | Select-Object -First 1
+  $faronicsService = Get-Service -Name 'DFServ' -ErrorAction SilentlyContinue
+  $faronicsRegistry = Test-Path 'HKLM:\SYSTEM\CurrentControlSet\Services\DFServ'
+  $faronicsInstalled = [bool]($faronicsMarker -or $faronicsService -or $faronicsRegistry)
+  if ($faronicsInstalled) {
     $state = @{
-      State = 'faronics_ready'
+      State = $(if ($dfcPath) { 'faronics_ready' } else { 'faronics_detected' })
       Success = $true
       Supported = $true
       IsAdmin = $isAdmin
       RestartRequired = $false
       ExitCode = 0
       ProductName = $productName
-      Message = 'Faronics Deep Freeze Enterprise terdeteksi. Masukkan password Command Line satu kali dari Pengaturan LabKom Siswa.'
+      Message = $(if ($dfcPath) {
+        'Faronics Deep Freeze terdeteksi. UWF tidak dipasang; masukkan password Command Line satu kali dari Pengaturan LabKom Siswa.'
+      } else {
+        'Faronics Deep Freeze terdeteksi tanpa DFC.exe. UWF tidak dipasang untuk mencegah bentrok provider.'
+      })
     }
     Save-ProvisionState @state
     exit 0

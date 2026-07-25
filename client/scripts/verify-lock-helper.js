@@ -67,4 +67,17 @@ assert.match(
   /s\.on\('disconnect'[\s\S]*?setAttentionMode\(\{ enabled: false[\s\S]*?electronAPI\?\.setAttentionMode\?\.\(false\)/,
   'Disconnect server harus melepas overlay dan kunci native Attention Mode.',
 );
-console.log('Lock helper packaging, presence resume, and fail-open recovery: PASS');
+const netSupportStart = mainSource.indexOf('function checkNetSupportConflict()');
+const netSupportEnd = mainSource.indexOf('function getCenter', netSupportStart);
+assert.ok(netSupportStart >= 0 && netSupportEnd > netSupportStart, 'Monitor NetSupport harus tersedia di main process.');
+const netSupportSource = mainSource.slice(netSupportStart, netSupportEnd);
+assert.match(netSupportSource, /Get-Process -Name client32,pciinop,wictor,pcihsk/);
+assert.match(netSupportSource, /mainWindow\.setAlwaysOnTop\(false\)/);
+assert.doesNotMatch(
+  netSupportSource,
+  /Stop-Process|taskkill|\.kill\(/i,
+  'Koeksistensi NetSupport tidak boleh menghentikan atau mematikan proses vendor.',
+);
+assert.match(mainSource, /if \(netSupportActive\) \{[\s\S]{0,300}setAlwaysOnTop\(false\)[\s\S]{0,120}return;/);
+
+console.log('Lock helper packaging, presence resume, fail-open recovery, and NetSupport coexistence: PASS');

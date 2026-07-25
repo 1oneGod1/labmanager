@@ -25,14 +25,11 @@ import BrandingWorkspace from './components/BrandingWorkspace.jsx';
 import BrandLogo from './components/BrandLogo.jsx';
 import DeepFreezeControls from './components/DeepFreezeControls.jsx';
 import { DEFAULT_BRANDING, normalizeBranding } from './branding.js';
+import { API_BASE as API, REALTIME_API, adminFetch } from './apiConfig.js';
 
-// Di Electron production, window load dari file:// sehingga fetch relatif gagal.
-// Deteksi protokol: file:// → pakai absolute URL ke server lokal.
-const DESKTOP_PROTOCOLS = new Set(['file:', 'labkom:']);
-const API = (typeof window !== 'undefined' && DESKTOP_PROTOCOLS.has(window.location.protocol))
-  ? 'http://localhost:3001'
-  : '';  // dev mode: Vite proxy arahkan /api → localhost:3001
-const REALTIME_API = API || 'http://localhost:3001';
+// Semua REST API desktop melewati IPC agar respons tetap valid ketika NetSupport
+// Web Control menyisipkan halaman ApprovedWebList pada trafik HTTP lokal.
+const fetch = adminFetch;
 const DEMO_MODE = import.meta.env.DEV
   && new URLSearchParams(window.location.search).get('demo') === '1';
 
@@ -696,7 +693,7 @@ export default function AdminDashboard() {
     if (!token) return;
 
     const socket = io(REALTIME_API, {
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
       auth: {
         role: 'admin',
         token,

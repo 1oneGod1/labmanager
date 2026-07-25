@@ -6,6 +6,9 @@ const STATE_LABELS = {
   unsupported_edition: 'Tidak didukung',
   provider_not_installed: 'Faronics belum terpasang',
   provider_auth_required: 'Password Faronics diperlukan',
+  provider_conflict: 'Konflik Faronics/UWF',
+  provider_conflict_restart: 'Restart untuk amankan UWF',
+  provider_control_unavailable: 'Kontrol Faronics tidak tersedia',
   feature_not_installed: 'Belum disiapkan',
   feature_pending_restart: 'Perlu restart',
   frozen: 'Beku aktif',
@@ -20,7 +23,7 @@ const STATE_LABELS = {
 
 function getTone(status) {
   if (!status) return 'text-slate-400 bg-slate-500/10 border-slate-500/20';
-  if (status.success === false || ['error', 'partial'].includes(status.state)) {
+  if (status.success === false || ['error', 'partial', 'provider_conflict', 'provider_control_unavailable'].includes(status.state)) {
     return 'text-red-300 bg-red-500/10 border-red-500/25';
   }
   if (['frozen', 'pending_freeze'].includes(status.state)) {
@@ -42,7 +45,14 @@ export default function DeepFreezeControls({
 }) {
   const state = status?.state || 'unknown';
   const isBusy = busy || ['configuring', 'busy'].includes(state);
-  const unsupported = ['unsupported_platform', 'unsupported_edition', 'provider_not_installed'].includes(state);
+  const unsupported = [
+    'unsupported_platform',
+    'unsupported_edition',
+    'provider_not_installed',
+    'provider_conflict',
+    'provider_conflict_restart',
+    'provider_control_unavailable',
+  ].includes(state);
   const nextFrozen = status?.next_frozen === true;
   const action = nextFrozen ? 'unfreeze' : 'freeze';
   const overlayUsed = Number(status?.overlay_consumption_mb) || 0;
@@ -105,7 +115,7 @@ export default function DeepFreezeControls({
         <button
           type="button"
           onClick={() => onRequest?.(action)}
-          disabled={offline || isBusy || unsupported || status?.requires_provider_password}
+          disabled={offline || isBusy || unsupported || status?.requires_admin || status?.requires_provider_password}
           className={`inline-flex h-9 flex-1 items-center justify-center gap-1 rounded-lg px-3 text-[10px] font-semibold disabled:opacity-40 ${
             nextFrozen
               ? 'bg-emerald-500 text-slate-950 hover:bg-emerald-400'

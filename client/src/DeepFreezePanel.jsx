@@ -22,6 +22,9 @@ const STATE_META = {
   unsupported_edition: ['Windows tidak didukung', 'border-red-400/30 bg-red-500/10 text-red-200'],
   provider_not_installed: ['Faronics belum terpasang', 'border-amber-400/30 bg-amber-500/10 text-amber-200'],
   provider_auth_required: ['Password Faronics diperlukan', 'border-amber-400/30 bg-amber-500/10 text-amber-200'],
+  provider_conflict: ['Konflik Faronics/UWF', 'border-red-400/30 bg-red-500/10 text-red-200'],
+  provider_conflict_restart: ['Restart untuk amankan UWF', 'border-amber-400/30 bg-amber-500/10 text-amber-200'],
+  provider_control_unavailable: ['Kontrol Faronics tidak tersedia', 'border-red-400/30 bg-red-500/10 text-red-200'],
   unsupported_platform: ['Sistem tidak didukung', 'border-red-400/30 bg-red-500/10 text-red-200'],
   partial: ['Konfigurasi belum lengkap', 'border-amber-400/30 bg-amber-500/10 text-amber-200'],
   error: ['Status gagal dibaca', 'border-red-400/30 bg-red-500/10 text-red-200'],
@@ -45,8 +48,9 @@ export default function DeepFreezePanel({
   const supported = status.supported !== false
     && !['unsupported_edition', 'unsupported_platform', 'provider_not_installed'].includes(state);
   const isAdmin = status.is_admin === true;
-  const requiresWindowsAdmin = provider === 'uwf' && !isAdmin;
-  const canOperate = supported && !requiresWindowsAdmin;
+  const requiresWindowsAdmin = status.requires_admin === true || (provider === 'uwf' && !isAdmin);
+  const providerBlocked = ['provider_conflict', 'provider_conflict_restart', 'provider_control_unavailable'].includes(state);
+  const canOperate = supported && !requiresWindowsAdmin && !providerBlocked;
   const currentlyFrozen = status.current_frozen === true;
   const nextFrozen = status.next_frozen === true;
 
@@ -121,7 +125,9 @@ export default function DeepFreezePanel({
 
           <div className="mt-3 flex items-start gap-2 rounded-xl border border-blue-400/20 bg-blue-500/10 px-3 py-2 text-[11px] leading-5 text-blue-200">
             <KeyRound className="mt-0.5 h-3.5 w-3.5 flex-none" />
-            {isFaronics ? (
+            {isFaronics && state === 'provider_control_unavailable' ? (
+              <span><strong>Mode aman:</strong> Faronics terdeteksi tetapi DFC.exe tidak tersedia. LabKom tidak akan menebak atau mengubah status Frozen.</span>
+            ) : isFaronics ? (
               <span><strong>Faronics Enterprise:</strong> masukkan password bertipe Command Line satu kali. Password disimpan terenkripsi oleh Windows hanya pada PC ini.</span>
             ) : (
               <span><strong>Instalasi awal:</strong> Windows meminta kredensial Administrator melalui UAC untuk menyiapkan UWF. Kredensial tidak pernah disimpan oleh LabKom.</span>

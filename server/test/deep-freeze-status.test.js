@@ -15,6 +15,14 @@ test('normalizes Deep Freeze status to an explicit safe schema', () => {
     feature_installed: true,
     current_frozen: false,
     next_frozen: true,
+    uwf_conflict: true,
+    uwf_conflict_detected: true,
+    uwf_deactivation_scheduled: true,
+    uwf_current_enabled: true,
+    uwf_next_enabled: false,
+    uwf_current_protected: true,
+    uwf_next_protected: false,
+    faronics_state_known: true,
     overlay_consumption_mb: 2048,
     message: 'Siap\u0000 setelah restart',
     unexpected: { admin: true },
@@ -26,6 +34,14 @@ test('normalizes Deep Freeze status to an explicit safe schema', () => {
   assert.equal(status.provider_label, 'Faronics Deep Freeze Enterprise');
   assert.equal(status.credential_configured, true);
   assert.equal(status.next_frozen, true);
+  assert.equal(status.uwf_conflict, true);
+  assert.equal(status.uwf_conflict_detected, true);
+  assert.equal(status.uwf_deactivation_scheduled, true);
+  assert.equal(status.uwf_current_enabled, true);
+  assert.equal(status.uwf_next_enabled, false);
+  assert.equal(status.uwf_current_protected, true);
+  assert.equal(status.uwf_next_protected, false);
+  assert.equal(status.faronics_state_known, true);
   assert.equal(status.message, 'Siap  setelah restart');
   assert.equal('unexpected' in status, false);
 });
