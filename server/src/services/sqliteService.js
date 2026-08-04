@@ -66,6 +66,14 @@ function compareText(left, right) {
   });
 }
 
+function normalizeNis(value) {
+  return String(value ?? '').trim();
+}
+
+function normalizeEmail(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
 function sortByDate(rows, key, direction = 'desc') {
   const multiplier = direction === 'asc' ? 1 : -1;
   return [...rows].sort((left, right) => (timeMs(left[key]) - timeMs(right[key])) * multiplier);
@@ -115,7 +123,20 @@ const studentsService = {
   },
 
   async getByNis(nis) {
-    return store.list(COLLECTIONS.students).find((student) => student.nis === nis) || null;
+    const normalizedNis = normalizeNis(nis);
+    return store.list(COLLECTIONS.students)
+      .find((student) => normalizeNis(student.nis) === normalizedNis) || null;
+  },
+
+  async getByEmail(email) {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) return null;
+    return store.list(COLLECTIONS.students)
+      .find((student) => normalizeEmail(student.email) === normalizedEmail) || null;
+  },
+
+  async getByLoginIdentifier(identifier) {
+    return await this.getByNis(identifier) || this.getByEmail(identifier);
   },
 
   async getById(id) {
@@ -123,10 +144,14 @@ const studentsService = {
   },
 
   async create(studentData) {
-    if (await this.getByNis(studentData.nis)) throw new Error('NIS sudah terdaftar');
+    const nis = normalizeNis(studentData.nis);
+    const email = normalizeEmail(studentData.email);
+    if (await this.getByNis(nis)) throw new Error('NIS sudah terdaftar');
+    if (email && await this.getByEmail(email)) throw new Error('Email sudah terdaftar');
     const now = timestamp();
     const created = store.insert(COLLECTIONS.students, {
-      nis: studentData.nis,
+      nis,
+      email: email || null,
       nama_lengkap: studentData.nama_lengkap,
       kelas: studentData.kelas || null,
       password_hash: studentData.password_hash,
@@ -141,12 +166,23 @@ const studentsService = {
   async update(id, updateData) {
     const existing = store.get(COLLECTIONS.students, id);
     if (!existing) throw new Error('Siswa tidak ditemukan.');
-    if (updateData.nis && updateData.nis !== existing.nis) {
-      const duplicate = await this.getByNis(updateData.nis);
+    const normalizedUpdate = { ...updateData };
+    if (Object.prototype.hasOwnProperty.call(normalizedUpdate, 'nis')) {
+      normalizedUpdate.nis = normalizeNis(normalizedUpdate.nis);
+    }
+    if (Object.prototype.hasOwnProperty.call(normalizedUpdate, 'email')) {
+      normalizedUpdate.email = normalizeEmail(normalizedUpdate.email) || null;
+    }
+    if (normalizedUpdate.nis && normalizedUpdate.nis !== existing.nis) {
+      const duplicate = await this.getByNis(normalizedUpdate.nis);
       if (duplicate && duplicate.id !== id) throw new Error('NIS sudah terdaftar');
     }
+    if (normalizedUpdate.email && normalizedUpdate.email !== normalizeEmail(existing.email)) {
+      const duplicate = await this.getByEmail(normalizedUpdate.email);
+      if (duplicate && duplicate.id !== id) throw new Error('Email sudah terdaftar');
+    }
     const result = store.update(COLLECTIONS.students, id, {
-      ...updateData,
+      ...normalizedUpdate,
       updated_at: timestamp(),
     });
     delete result.password_hash;
@@ -167,6 +203,7 @@ const studentsService = {
     const needle = String(query || '').toLowerCase();
     return (await this.getAll()).filter((student) =>
       String(student.nis || '').toLowerCase().includes(needle)
+      || String(student.email || '').toLowerCase().includes(needle)
       || String(student.nama_lengkap || '').toLowerCase().includes(needle));
   },
 };

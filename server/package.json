@@ -8,6 +8,7 @@
     "dev": "nodemon src/index.js",
     "generate-hash": "node scripts/generate-hash.js",
     "hash-admin-password": "node scripts/hash-admin-password.js",
+    "import-email-students": "node scripts/import-email-students.js",
     "test": "node --test"
   },
   "dependencies": {

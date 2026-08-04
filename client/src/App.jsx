@@ -667,7 +667,7 @@ export default function App() {
       const result = await apiCall(`${serverUrl}/api/auth/login`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ nis, password, pc_name: pcName }),
+        body:    JSON.stringify({ identifier: nis, nis, password, pc_name: pcName }),
       });
 
       if (result.ok && result.data?.success) {
@@ -1249,7 +1249,7 @@ export default function App() {
               {pairingStatus.state === 'ready' ? 'Login Siswa' : 'Hubungkan PC ke Admin'}
             </h3>
             <p className="text-slate-400 mt-1">
-              {pairingStatus.state === 'ready' ? 'Gunakan NIS yang terdaftar' : 'Pairing hanya dilakukan satu kali untuk PC ini'}
+              {pairingStatus.state === 'ready' ? 'Gunakan NIS atau email yang terdaftar' : 'Pairing hanya dilakukan satu kali untuk PC ini'}
             </p>
           </div>
 
@@ -1263,9 +1263,9 @@ export default function App() {
               </div>
             )}
 
-            {/* Input NIS */}
+            {/* Input NIS atau email */}
             <div className="space-y-1">
-              <label className="text-sm font-medium text-slate-300 ml-1">Nomor Induk Siswa (NIS)</label>
+              <label className="text-sm font-medium text-slate-300 ml-1">NIS atau Email Siswa</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-slate-500" />
@@ -1275,7 +1275,7 @@ export default function App() {
                   value={nis}
                   onChange={(e) => setNis(e.target.value)}
                   className="w-full pl-12 pr-4 py-4 bg-slate-800/50 border border-slate-700 text-white rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
-                  placeholder="Masukkan NIS..."
+                  placeholder="Masukkan NIS atau email..."
                   required
                   autoComplete="off"
                   disabled={isLoading}

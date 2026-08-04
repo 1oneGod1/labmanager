@@ -21,6 +21,7 @@ test('SQLite lokal mempertahankan kontrak seluruh layanan LabKom', async () => {
 
     const student = await service.students.create({
       nis: '1001',
+      email: ' Siswa.Test@Student.Sekolah.sch.id ',
       nama_lengkap: 'Siswa Test',
       kelas: 'X RPL 1',
       password_hash: '$2b$10$test-hash',
@@ -29,6 +30,12 @@ test('SQLite lokal mempertahankan kontrak seluruh layanan LabKom', async () => {
     assert.equal(student.nis, '1001');
     assert.equal('password_hash' in student, false);
     assert.equal((await service.students.getByNis('1001')).password_hash, '$2b$10$test-hash');
+    assert.equal(student.email, 'siswa.test@student.sekolah.sch.id');
+    assert.equal((await service.students.getByEmail('SISWA.TEST@student.sekolah.sch.id')).id, student.id);
+    assert.equal((await service.students.getByLoginIdentifier(' siswa.test@student.sekolah.sch.id ')).id, student.id);
+    await assert.rejects(() => service.students.create({
+      nis: '1002', email: 'siswa.test@student.sekolah.sch.id', nama_lengkap: 'Email Duplikat', password_hash: 'x',
+    }), /Email sudah terdaftar/);
     await assert.rejects(() => service.students.create({
       nis: '1001', nama_lengkap: 'Duplikat', password_hash: 'x',
     }), /NIS sudah terdaftar/);

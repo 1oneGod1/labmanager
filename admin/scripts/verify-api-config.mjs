@@ -93,7 +93,8 @@ assert.equal(generatedTemplate.success, true);
 assert.equal(savedTemplatePayload.format, 'xlsx');
 const templateBytes = Uint8Array.from(Buffer.from(savedTemplatePayload.base64Data, 'base64'));
 const templateRows = await readSheet(templateBytes.buffer);
-assert.deepEqual(templateRows[0], ['nis', 'nama_lengkap', 'kelas', 'password']);
+assert.deepEqual(templateRows[0], ['nis', 'email', 'nama_lengkap', 'kelas', 'password']);
+assert.match(templateRows[1][1], /@student\.sekolah\.sch\.id$/);
 assert.equal(templateRows[1][0], '1001');
 delete globalThis.window;
 

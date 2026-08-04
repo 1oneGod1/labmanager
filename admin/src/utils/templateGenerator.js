@@ -1,10 +1,10 @@
 import writeExcelFile from 'write-excel-file/universal';
 
-const TEMPLATE_HEADERS = ['nis', 'nama_lengkap', 'kelas', 'password'];
+const TEMPLATE_HEADERS = ['nis', 'email', 'nama_lengkap', 'kelas', 'password'];
 const TEMPLATE_ROWS = [
-  ['1001', 'Ahmad Fauzi', 'XII TKJ 1', 'siswa123'],
-  ['1002', 'Budi Santoso', 'XII TKJ 2', 'siswa123'],
-  ['1003', 'Citra Dewi', 'XII RPL 1', 'siswa123'],
+  ['1001', 'ahmad.fauzi@student.sekolah.sch.id', 'Ahmad Fauzi', 'XII TKJ 1', 'siswa123'],
+  ['1002', 'budi.santoso@student.sekolah.sch.id', 'Budi Santoso', 'XII TKJ 2', 'siswa123'],
+  ['1003', 'citra.dewi@student.sekolah.sch.id', 'Citra Dewi', 'XII RPL 1', 'siswa123'],
 ];
 
 function csvEscape(value) {
@@ -49,7 +49,7 @@ export async function downloadStudentTemplateLocal(format = 'xlsx') {
         [TEMPLATE_HEADERS, ...TEMPLATE_ROWS],
         {
           sheet: 'Data Siswa',
-          columns: [{ width: 15 }, { width: 30 }, { width: 15 }, { width: 20 }],
+          columns: [{ width: 15 }, { width: 42 }, { width: 30 }, { width: 15 }, { width: 20 }],
         },
       ).toBlob();
 

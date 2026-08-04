@@ -36,7 +36,7 @@ test('Import data siswa dari Excel/CSV dan pengunduhan template berfungsi dengan
     // Verifikasi buffer template dengan parser XLSX yang juga digunakan aplikasi.
     const parsedRows = await readSheet(mockResXlsx.body, 'Data Siswa');
     assert.equal(parsedRows.length, 4);
-    assert.deepEqual(parsedRows[0], ['nis', 'nama_lengkap', 'kelas', 'password']);
+    assert.deepEqual(parsedRows[0], ['nis', 'email', 'nama_lengkap', 'kelas', 'password']);
     assert.equal(parsedRows[1][0], '1001');
 
     // 2. Uji pengunduhan template CSV
@@ -48,13 +48,13 @@ test('Import data siswa dari Excel/CSV dan pengunduhan template berfungsi dengan
 
     await controller.downloadStudentTemplate({ query: { format: 'csv' } }, mockResCsv);
     assert.ok(mockResCsv.headers['Content-Type'].includes('text/csv'));
-    assert.ok(mockResCsv.body.includes('nis,nama_lengkap,kelas,password'));
+    assert.ok(mockResCsv.body.includes('nis,email,nama_lengkap,kelas,password'));
 
     // 3. Uji import batch data siswa
     const importPayload = {
       students: [
-        { nis: '2001', nama_lengkap: 'Siswa Import 1', kelas: 'X TKJ 1', password: 'pass123' },
-        { nis: '2002', nama_lengkap: 'Siswa Import 2', kelas: 'X TKJ 2', password: 'pass123' },
+        { nis: '2001', email: 'siswa.2001@student.sekolah.sch.id', nama_lengkap: 'Siswa Import 1', kelas: 'X TKJ 1', password: 'pass123' },
+        { nis: '2002', email: 'siswa.2002@student.sekolah.sch.id', nama_lengkap: 'Siswa Import 2', kelas: 'X TKJ 2', password: 'pass123' },
       ],
       overwriteExisting: false,
     };
@@ -76,7 +76,7 @@ test('Import data siswa dari Excel/CSV dan pengunduhan template berfungsi dengan
     // 4. Uji import ulang NIS yang sama dengan overwriteExisting = true
     const overwritePayload = {
       students: [
-        { nis: '2001', nama_lengkap: 'Siswa Import 1 Update', kelas: 'X TKJ 1 Updated', password: 'pass456' },
+        { nis: '2001', email: 'siswa.2001.baru@student.sekolah.sch.id', nama_lengkap: 'Siswa Import 1 Update', kelas: 'X TKJ 1 Updated', password: 'pass456' },
       ],
       overwriteExisting: true,
     };
@@ -92,6 +92,7 @@ test('Import data siswa dari Excel/CSV dan pengunduhan template berfungsi dengan
     const updatedStudent = await sqliteService.students.getByNis('2001');
     assert.equal(updatedStudent.nama_lengkap, 'Siswa Import 1 Update');
     assert.equal(updatedStudent.kelas, 'X TKJ 1 Updated');
+    assert.equal(updatedStudent.email, 'siswa.2001.baru@student.sekolah.sch.id');
 
   } finally {
     await sqliteService.shutdown({ backup: false });

@@ -2,16 +2,24 @@ const bcrypt = require('bcryptjs');
 const writeExcelFile = require('write-excel-file/node');
 const firebaseService = require('../services/dataService');
 
-const TEMPLATE_HEADERS = ['nis', 'nama_lengkap', 'kelas', 'password'];
+const TEMPLATE_HEADERS = ['nis', 'email', 'nama_lengkap', 'kelas', 'password'];
 const TEMPLATE_ROWS = [
-  ['1001', 'Ahmad Fauzi', 'XII TKJ 1', 'siswa123'],
-  ['1002', 'Budi Santoso', 'XII TKJ 2', 'siswa123'],
-  ['1003', 'Citra Dewi', 'XII RPL 1', 'siswa123'],
+  ['1001', 'ahmad.fauzi@student.sekolah.sch.id', 'Ahmad Fauzi', 'XII TKJ 1', 'siswa123'],
+  ['1002', 'budi.santoso@student.sekolah.sch.id', 'Budi Santoso', 'XII TKJ 2', 'siswa123'],
+  ['1003', 'citra.dewi@student.sekolah.sch.id', 'Citra Dewi', 'XII RPL 1', 'siswa123'],
 ];
 
 function csvEscape(value) {
   const text = String(value ?? '');
   return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function normalizeEmail(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -61,7 +69,7 @@ async function downloadStudentTemplate(req, res) {
       [TEMPLATE_HEADERS, ...TEMPLATE_ROWS],
       {
         sheet: 'Data Siswa',
-        columns: [{ width: 15 }, { width: 30 }, { width: 15 }, { width: 20 }],
+        columns: [{ width: 15 }, { width: 42 }, { width: 30 }, { width: 15 }, { width: 20 }],
       },
     ).toBuffer();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -97,6 +105,10 @@ async function importStudents(req, res) {
     for (let index = 0; index < students.length; index++) {
       const item = students[index];
       const nis = String(item.nis ?? item.NIS ?? item.nisn ?? item.username ?? '').trim();
+      const hasEmail = ['email', 'Email', 'EMAIL']
+        .some((key) => Object.prototype.hasOwnProperty.call(item, key));
+
+      const email = normalizeEmail(item.email ?? item.Email ?? item.EMAIL);
       const nama_lengkap = String(item.nama_lengkap ?? item.Nama ?? item.nama ?? item.name ?? '').trim();
       const kelas = String(item.kelas ?? item.Kelas ?? item.class ?? '').trim() || null;
       const rawPassword = String(item.password ?? item.Password ?? item.pass ?? '').trim();
@@ -107,12 +119,25 @@ async function importStudents(req, res) {
         continue;
       }
 
+      if (!isValidEmail(email)) {
+        errors.push(`Baris ${index + 1}: Format email tidak valid.`);
+        skippedCount++;
+        continue;
+      }
+
       const existing = await firebaseService.students.getByNis(nis);
+      const emailOwner = email ? await firebaseService.students.getByEmail(email) : null;
+      if (emailOwner && emailOwner.id !== existing?.id) {
+        errors.push(`Baris ${index + 1}: Email sudah digunakan oleh NIS lain.`);
+        skippedCount++;
+        continue;
+      }
 
       if (existing) {
         if (overwriteExisting) {
           const updateData = {
             nis,
+            ...(hasEmail ? { email: email || null } : {}),
             nama_lengkap,
             kelas,
             is_active: 1,
@@ -136,6 +161,7 @@ async function importStudents(req, res) {
         const password_hash = await bcrypt.hash(rawPassword, 10);
         await firebaseService.students.create({
           nis,
+          email: email || null,
           nama_lengkap,
           kelas,
           password_hash,
@@ -162,12 +188,15 @@ async function importStudents(req, res) {
 
 // ── POST /api/students ───────────────────────────────────────────
 async function createStudent(req, res) {
-  const { nis, nama_lengkap, kelas, password } = req.body;
+  const { nis, email, nama_lengkap, kelas, password } = req.body;
 
   if (!nis || !nama_lengkap || !password) {
     return res.status(400).json({ success: false, message: 'NIS, nama, dan password wajib diisi.' });
   }
 
+  if (!isValidEmail(normalizeEmail(email))) {
+    return res.status(400).json({ success: false, message: 'Format email tidak valid.' });
+  }
   try {
     if (!firebaseService.isStorageAvailable()) {
       return res.status(503).json({ 
@@ -182,6 +211,7 @@ async function createStudent(req, res) {
     // Create student via active storage provider.
     const newStudent = await firebaseService.students.create({
       nis,
+      email: normalizeEmail(email) || null,
       nama_lengkap,
       kelas: kelas || null,
       password_hash,
@@ -197,7 +227,7 @@ async function createStudent(req, res) {
     console.error('[STUDENTS] createStudent error:', err);
     
     // Handle specific errors
-    if (err.message === 'NIS sudah terdaftar') {
+    if (['NIS sudah terdaftar', 'Email sudah terdaftar'].includes(err.message)) {
       return res.status(409).json({ success: false, message: err.message });
     }
     
@@ -208,7 +238,11 @@ async function createStudent(req, res) {
 // ── PUT /api/students/:id ────────────────────────────────────────
 async function updateStudent(req, res) {
   const { id } = req.params;
-  const { nis, nama_lengkap, kelas, is_active, password } = req.body;
+  const { nis, email, nama_lengkap, kelas, is_active, password } = req.body;
+
+  if (Object.prototype.hasOwnProperty.call(req.body, 'email') && !isValidEmail(normalizeEmail(email))) {
+    return res.status(400).json({ success: false, message: 'Format email tidak valid.' });
+  }
 
   try {
     if (!firebaseService.isStorageAvailable()) {
@@ -232,6 +266,9 @@ async function updateStudent(req, res) {
       is_active,
     };
 
+    if (Object.prototype.hasOwnProperty.call(req.body, 'email')) {
+      updateData.email = normalizeEmail(email) || null;
+    }
     // If password is provided, hash it
     if (password) {
       updateData.password_hash = await bcrypt.hash(password, 10);
@@ -243,6 +280,9 @@ async function updateStudent(req, res) {
     return res.json({ success: true, message: 'Data siswa berhasil diperbarui.' });
   } catch (err) {
     console.error('[STUDENTS] updateStudent error:', err);
+    if (['NIS sudah terdaftar', 'Email sudah terdaftar'].includes(err.message)) {
+      return res.status(409).json({ success: false, message: err.message });
+    }
     return res.status(500).json({ success: false, message: 'Gagal memperbarui data siswa.' });
   }
 }

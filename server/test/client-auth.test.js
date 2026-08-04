@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const bcrypt = require('bcryptjs');
 
 const testDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'labkom-client-auth-'));
 process.env.LABKOM_DATABASE_FILE = path.join(testDataDir, 'labkom.db');
@@ -138,6 +139,35 @@ test('requireDevice does not accept an admin session token', () => {
   } finally {
     adminSessions.revokeToken(adminToken);
   }
+});
+
+test('login siswa menerima email tanpa membedakan huruf besar dan kecil', async () => {
+  const password = 'EmailLogin123!';
+  const student = await dataService.students.create({
+    nis: 'email-login-1001',
+    email: 'login.siswa@student.sekolah.sch.id',
+    nama_lengkap: 'Siswa Login Email',
+    kelas: 'X-A',
+    password_hash: await bcrypt.hash(password, 10),
+    is_active: 1,
+  });
+  const { login } = require('../src/controllers/authController');
+  const response = responseRecorder();
+
+  await login({
+    body: { identifier: ' LOGIN.SISWA@STUDENT.SEKOLAH.SCH.ID ', password },
+    actor: {
+      role: 'client',
+      device_id: '88888888888888888888888888888888',
+      pc_name: 'PC-TEST-EMAIL',
+    },
+  }, response);
+
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.success, true);
+  assert.equal(response.body.data.student_id, student.id);
+  assert.equal(response.body.data.email, 'login.siswa@student.sekolah.sch.id');
+  await dataService.sessions.endSession(response.body.data.session_id);
 });
 
 test('shutdown logout is idempotent and copies the initial checklist once', async () => {

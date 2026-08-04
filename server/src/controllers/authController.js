@@ -43,18 +43,19 @@ function deviceRegister(req, res) {
 
 // POST /api/auth/login
 async function login(req, res) {
-  const { nis, password } = req.body;
+  const { identifier, nis, email, password } = req.body || {};
+  const loginIdentifier = String(identifier ?? nis ?? email ?? '').trim();
 
-  if (!nis || !password) {
-    return res.status(400).json({ success: false, message: 'NIS dan password wajib diisi.' });
+  if (!loginIdentifier || !password) {
+    return res.status(400).json({ success: false, message: 'NIS/email dan password wajib diisi.' });
   }
 
   try {
-    // 1. Cari siswa berdasarkan NIS
-    const student = await firebaseService.students.getByNis(nis);
+    // 1. Cari siswa berdasarkan NIS atau email.
+    const student = await firebaseService.students.getByLoginIdentifier(loginIdentifier);
 
     if (!student) {
-      return res.status(401).json({ success: false, message: 'NIS tidak ditemukan.' });
+      return res.status(401).json({ success: false, message: 'NIS atau email tidak ditemukan.' });
     }
 
     // 2. Cek apakah akun aktif
@@ -115,6 +116,7 @@ async function login(req, res) {
         session_id:   session.id,
         student_id:   student.id,
         nis:          student.nis,
+        email:        student.email || null,
         nama_lengkap: student.nama_lengkap,
         kelas:        student.kelas,
         pc_name:      pcName,

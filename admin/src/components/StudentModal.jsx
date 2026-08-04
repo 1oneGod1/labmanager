@@ -15,6 +15,7 @@ export default function StudentModal({ student, onClose, onSaved }) {
 
   const [form, setForm] = useState({
     nis:          student?.nis        || '',
+    email:        student?.email      || '',
     nama_lengkap: student?.nama_lengkap || '',
     kelas:        student?.kelas       || '',
     password:     '',
@@ -41,6 +42,9 @@ export default function StudentModal({ student, onClose, onSaved }) {
 
     if (!form.nis || !form.nama_lengkap) {
       return setError('NIS dan Nama Lengkap wajib diisi.');
+    }
+    if (form.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      return setError('Format email tidak valid.');
     }
     if (!isEdit && !form.password) {
       return setError('Password wajib diisi untuk siswa baru.');
@@ -74,7 +78,7 @@ export default function StudentModal({ student, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-in zoom-in-95 duration-500">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-500">
         {/* Header */}
         <div className="bg-slate-900 text-white p-5 rounded-t-2xl flex justify-between items-center">
           <div className="flex items-center space-x-3">
@@ -95,6 +99,17 @@ export default function StudentModal({ student, onClose, onSaved }) {
               disabled={isEdit}
               placeholder="Masukkan NIS..."
               className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm disabled:bg-slate-100 disabled:cursor-not-allowed"
+            />
+          </div>
+
+          {/* Email */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email <span className="text-slate-400 font-normal">(opsional)</span></label>
+            <input
+              type="email"
+              name="email" value={form.email} onChange={handleChange}
+              placeholder="nama.siswa@student.sekolah.sch.id"
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm"
             />
           </div>
 

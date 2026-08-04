@@ -1083,9 +1083,12 @@ export default function AdminDashboard() {
     setDeleteTarget(null);
   };
 
-  const filteredStudents = students.filter(s =>
-    s.nis.includes(stuSearch) ||
-    s.nama_lengkap.toLowerCase().includes(stuSearch.toLowerCase())
+  const studentSearchNeedle = stuSearch.trim().toLowerCase();
+  const filteredStudents = students.filter((s) =>
+    String(s.nis || '').toLowerCase().includes(studentSearchNeedle)
+    || String(s.email || '').toLowerCase().includes(studentSearchNeedle)
+    || String(s.nama_lengkap || '').toLowerCase().includes(studentSearchNeedle)
+    || String(s.kelas || '').toLowerCase().includes(studentSearchNeedle)
   );
 
   // ── History ───────────────────────────────────────────────────────────
@@ -2453,7 +2456,7 @@ export default function AdminDashboard() {
             <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text" value={stuSearch} onChange={e => setStuSearch(e.target.value)}
-              placeholder="Cari NIS, Nama, atau Kelas..."
+              placeholder="Cari NIS, email, nama, atau kelas..."
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none text-xs"
             />
           </div>
@@ -2469,6 +2472,7 @@ export default function AdminDashboard() {
             <thead>
               <tr className="bg-slate-50 text-slate-500 text-sm border-b border-slate-200">
                 <th className="p-4 font-medium">NIS</th>
+                <th className="p-4 font-medium">Email</th>
                 <th className="p-4 font-medium">Nama Lengkap</th>
                 <th className="p-4 font-medium">Kelas</th>
                 <th className="p-4 font-medium">Status</th>
@@ -2478,17 +2482,18 @@ export default function AdminDashboard() {
             <tbody className="divide-y divide-slate-200">
               {filteredStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-14 text-center">
+                  <td colSpan={6} className="p-14 text-center">
                     <div className="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl border border-slate-200 bg-slate-50 text-slate-400">
                       <Users className="h-5 w-5" />
                     </div>
                     <p className="text-sm font-semibold text-slate-700">{stuSearch ? 'Siswa tidak ditemukan' : 'Belum ada data siswa'}</p>
-                    <p className="mt-1 text-xs text-slate-400">{stuSearch ? 'Coba gunakan NIS atau nama yang berbeda.' : 'Klik Tambah Siswa untuk membuat akun pertama.'}</p>
+                    <p className="mt-1 text-xs text-slate-400">{stuSearch ? 'Coba gunakan NIS, email, atau nama yang berbeda.' : 'Klik Tambah Siswa untuk membuat akun pertama.'}</p>
                   </td>
                 </tr>
               ) : filteredStudents.map((s) => (
                 <tr key={s.id} className="hover:bg-slate-50">
                   <td className="p-4 text-sm font-medium text-slate-800">{s.nis}</td>
+                  <td className="p-4 text-sm text-slate-600">{s.email || '-'}</td>
                   <td className="p-4 text-sm text-slate-600">{s.nama_lengkap}</td>
                   <td className="p-4 text-sm text-slate-600">{s.kelas || '-'}</td>
                   <td className="p-4">

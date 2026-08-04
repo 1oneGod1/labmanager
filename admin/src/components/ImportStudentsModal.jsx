@@ -76,10 +76,12 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
         return;
       }
 
-      // Normalisasi nama kolom & deteksi duplikat NIS internal
+      // Normalisasi nama kolom & deteksi duplikat NIS/email internal
       const nisSeen = new Set();
+      const emailSeen = new Set();
       const processed = rawJson.map((row, index) => {
         const nis = String(row.nis ?? row.NIS ?? row.nisn ?? row.username ?? row['No. Induk'] ?? '').trim();
+        const email = String(row.email ?? row.Email ?? row.EMAIL ?? '').trim().toLowerCase();
         const nama_lengkap = String(row.nama_lengkap ?? row.Nama ?? row.nama ?? row.name ?? row['Nama Lengkap'] ?? '').trim();
         const kelas = String(row.kelas ?? row.Kelas ?? row.class ?? row['Kelas/Rombel'] ?? '').trim();
         const password = String(row.password ?? row.Password ?? row.pass ?? '').trim();
@@ -96,16 +98,24 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
         if (missingFields.length > 0) {
           status = 'invalid';
           statusText = `${missingFields.join(', ')} kosong`;
+        } else if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          status = 'invalid';
+          statusText = 'Format email tidak valid';
         } else if (nisSeen.has(nis)) {
           status = 'duplicate_file';
           statusText = 'NIS duplikat di berkas ini';
+        } else if (email && emailSeen.has(email)) {
+          status = 'duplicate_file';
+          statusText = 'Email duplikat di berkas ini';
         } else {
           nisSeen.add(nis);
+          if (email) emailSeen.add(email);
         }
 
         return {
           rowNumber,
           nis,
+          email,
           nama_lengkap,
           kelas,
           password,
@@ -158,6 +168,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
       const payload = {
         students: validRows.map((r) => ({
           nis: r.nis,
+          email: r.email,
           nama_lengkap: r.nama_lengkap,
           kelas: r.kelas,
           password: r.password,
@@ -215,7 +226,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
               </div>
               <div>
                 <h4 className="text-sm font-bold text-slate-800">Format Template Data Siswa</h4>
-                <p className="text-xs text-slate-500">Gunakan format kolom: <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">nis</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">nama_lengkap</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">kelas</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">password</code></p>
+                <p className="text-xs text-slate-500">Gunakan format kolom: <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">nis</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">email</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">nama_lengkap</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">kelas</code>, <code className="bg-blue-100/70 text-blue-800 px-1 py-0.5 rounded font-mono">password</code></p>
               </div>
             </div>
             <div className="flex items-center space-x-2 shrink-0">
@@ -320,6 +331,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
                     <tr>
                       <th className="p-2.5 w-12 text-center">#</th>
                       <th className="p-2.5">NIS</th>
+                      <th className="p-2.5">Email</th>
                       <th className="p-2.5">Nama Lengkap</th>
                       <th className="p-2.5">Kelas</th>
                       <th className="p-2.5">Password</th>
@@ -331,6 +343,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
                       <tr key={row.rowNumber} className={row.status !== 'valid' ? 'bg-amber-50/40' : 'hover:bg-slate-50'}>
                         <td className="p-2.5 text-center text-slate-400 font-mono">{row.rowNumber}</td>
                         <td className="p-2.5 font-bold text-slate-800">{row.nis || '—'}</td>
+                        <td className="p-2.5 text-slate-600">{row.email || '—'}</td>
                         <td className="p-2.5 text-slate-700">{row.nama_lengkap || '—'}</td>
                         <td className="p-2.5 text-slate-500">{row.kelas || '—'}</td>
                         <td className="p-2.5 text-slate-500 font-mono">{row.password ? '••••••••' : '—'}</td>
@@ -363,7 +376,7 @@ export default function ImportStudentsModal({ onClose, onImported, showToast }) 
                     onChange={(e) => setOverwriteExisting(e.target.checked)}
                     className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
                   />
-                  <span>Timpa / perbarui data nama & kelas jika NIS siswa sudah pernah terdaftar</span>
+                  <span>Timpa / perbarui email, nama, kelas, dan password jika NIS siswa sudah pernah terdaftar</span>
                 </label>
               </div>
             </div>
