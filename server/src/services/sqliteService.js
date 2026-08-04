@@ -407,6 +407,9 @@ const checksService = {
       system_note: checkData.system_note || null,
       file_status: checkData.file_status || null,
       file_note: checkData.file_note || null,
+      auto_generated: checkData.auto_generated === true,
+      auto_reason: checkData.auto_reason || null,
+      copied_from_check_id: checkData.copied_from_check_id || null,
       created_at: now,
       updated_at: now,
     });
@@ -453,6 +456,42 @@ const checksService = {
       store.list(COLLECTIONS.checks).filter((row) => row.session_id === sessionId),
       'created_at',
     );
+  },
+
+  async createPostFromInitial(session, reason = 'system_shutdown') {
+    if (!session?.id) return { created: false, check: null, reason: 'session_missing' };
+
+    const sessionChecks = await this.getBySession(session.id);
+    const existingPost = sessionChecks.find((row) => row.check_type === 'post');
+    if (existingPost) return { created: false, check: existingPost, reason: 'post_exists' };
+
+    const initial = sessionChecks.find((row) => row.check_type === 'pre');
+    if (!initial) return { created: false, check: null, reason: 'precheck_missing' };
+
+    const copiedFields = {};
+    for (const field of [
+      'cpu_status', 'cpu_note',
+      'monitor_status', 'monitor_note',
+      'keyboard_status', 'keyboard_note',
+      'mouse_status', 'mouse_note',
+      'headset_status', 'headset_note',
+      'desk_status', 'desk_note',
+    ]) {
+      copiedFields[field] = initial[field] || null;
+    }
+
+    const check = await this.create({
+      session_id: session.id,
+      nis: session.nis || initial.nis,
+      nama_lengkap: session.nama_lengkap || initial.nama_lengkap,
+      pc_name: session.pc_name || initial.pc_name,
+      check_type: 'post',
+      ...copiedFields,
+      auto_generated: true,
+      auto_reason: reason,
+      copied_from_check_id: initial.id,
+    });
+    return { created: true, check, reason: 'copied_from_precheck' };
   },
 };
 

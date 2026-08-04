@@ -120,7 +120,7 @@ export default function RegisterWorkspace({ pcs = [], checks = [], loading = fal
                       <td className="labkom-mono">{pc.loginTime || pre?.time_str || '—'}</td>
                       <td className="labkom-mono">{pc.duration || '—'}</td>
                       <td><span className={`labkom-status ${pre?.has_issue ? 'is-failed' : pre ? 'is-delivered' : 'is-ready'}`}>{pre ? (pre.has_issue ? 'Masalah' : 'Normal') : 'Belum ada'}</span></td>
-                      <td><span className={`labkom-status ${post?.has_issue ? 'is-failed' : post ? 'is-delivered' : 'is-ready'}`}>{post ? (post.has_issue ? 'Masalah' : 'Normal') : 'Dalam sesi'}</span></td>
+                      <td><span className={`labkom-status ${post?.has_issue ? 'is-failed' : post ? 'is-delivered' : 'is-ready'}`}>{post ? (post.auto_generated ? (post.has_issue ? 'Otomatis · masalah' : 'Otomatis · sama') : (post.has_issue ? 'Masalah' : 'Normal')) : 'Dalam sesi'}</span></td>
                     </tr>
                   );
                 })}
@@ -158,7 +158,7 @@ export default function RegisterWorkspace({ pcs = [], checks = [], loading = fal
             </div>
 
             <p className="labkom-detail-kicker">Kondisi post-use</p>
-            <div className="labkom-post-status"><Clock3 />{selected.post ? (selected.post.has_issue ? 'Ada masalah setelah sesi' : 'Selesai · kondisi normal') : 'Menunggu — sesi masih aktif'}</div>
+            <div className="labkom-post-status"><Clock3 />{selected.post ? (selected.post.auto_generated ? 'Selesai otomatis · nilai disalin dari form awal' : (selected.post.has_issue ? 'Ada masalah setelah sesi' : 'Selesai · kondisi normal')) : 'Menunggu — sesi masih aktif'}</div>
           </>
         ) : <div className="labkom-empty"><Monitor />Belum ada data sesi.</div>}
       </aside>

@@ -696,6 +696,8 @@ const screenShareState = {
 //  Activity Monitor Instance
 let activityMonitor = null;
 let activeSessionId = null;
+let sessionLogoutInFlight = null;
+let systemSessionEnding = false;
 const CAPTURE_PROFILES = {
   overview: {
     mode: 'overview',
@@ -2222,6 +2224,8 @@ function scheduleUwfAwarePowerAction(command, acknowledge = () => {}) {
         acknowledge(false, message);
         return;
       }
+      await logoutActiveSessionOnQuit(command === 'restart' ? 'system_restart' : 'system_shutdown');
+
       if (!status.current_frozen) {
         fallback();
         return;
@@ -2238,6 +2242,7 @@ function scheduleUwfAwarePowerAction(command, acknowledge = () => {}) {
         return;
       }
       log.warn('[DEEP-FREEZE] Pemeriksaan daya gagal, memakai shutdown.exe:', error.message);
+      await logoutActiveSessionOnQuit(command === 'restart' ? 'system_restart' : 'system_shutdown');
       fallback();
     }
   }, 15_000);
@@ -2346,6 +2351,7 @@ async function connectRealtime(serverUrl) {
       const payload = getPresencePayload();
       realtimeSocket.emit('client:hello', payload);
       realtimeSocket.emit('client:heartbeat', payload);
+      retryPendingSessionLogout().catch(() => false);
       reconcileAndReportDeepFreezeStatus().catch((error) => {
         log.warn('[DEEP-FREEZE] Gagal melaporkan status saat connect:', error.message);
       });
@@ -2422,6 +2428,7 @@ function startPresenceHeartbeat() {
 
   const tick = () => {
     registerMacToServer();
+    retryPendingSessionLogout().catch(() => false);
     if (realtimeSocket?.connected) {
       realtimeSocket.emit('client:heartbeat', getPresencePayload());
     } else if (realtimeTargetUrl && !realtimeSocket?.active) {
@@ -2608,6 +2615,7 @@ function startActivityMonitoring(studentData = {}) {
 ipcMain.on('login-success', (_event, studentData) => {
   if (!mainWindow) return;
   activeSessionId = studentData?.session_id || studentData?.sessionId || null;
+  rememberActiveSessionForRecovery(activeSessionId);
 
   applyWindowLayout('checklist');
   mainWindow.webContents.send('kiosk-off', studentData);
@@ -2654,7 +2662,11 @@ ipcMain.on('set-screen-share-mode', (_event, enabled) => {
 // ── IPC: Logout →’ masuk kiosk lagi ───────────────────────────────
 ipcMain.on('do-logout', () => {
   if (!mainWindow) return;
+  const sessionIdToClose = activeSessionId;
   activeSessionId = null;
+  if (sessionIdToClose) {
+    queueSessionLogout(sessionIdToClose, 'student_logout', false).catch(() => false);
+  }
 
   stopScreenShare(); // ← hentikan screen share
 
@@ -2844,28 +2856,141 @@ function startCmdPolling() {
   }, 10_000);
 }
 // ── Auto force-logout ke server saat app mau ditutup ─────────────
-function logoutActiveSessionOnQuit() {
-  const cfg = loadServerConfig();
-  const token = getStoredClientToken();
-  if (!cfg.serverUrl || !activeSessionId || !token) return;
+function getPendingSessionLogoutPath() {
+  return path.join(app.getPath('userData'), 'pending-session-logout.json');
+}
+
+function readPendingSessionLogout() {
   try {
-    const parsed = new URL(`${cfg.serverUrl}/api/auth/logout`);
-    const body = JSON.stringify({ session_id: activeSessionId });
-    const req = http.request({
-      host: parsed.hostname,
-      port: parseInt(parsed.port) || 3001,
-      path: '/api/auth/logout',
+    const value = JSON.parse(fs.readFileSync(getPendingSessionLogoutPath(), 'utf-8'));
+    const sessionId = String(value.session_id || '').trim();
+    const serverUrl = new URL(String(value.server_url || '')).origin;
+    if (!sessionId || !isAllowedLabServerUrl(serverUrl)) return null;
+    return {
+      session_id: sessionId,
+      server_url: serverUrl,
+      reason: String(value.reason || 'unclean_shutdown'),
+      reuse_initial_check: value.reuse_initial_check === true,
+      queued_at: value.queued_at || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistPendingSessionLogout(record) {
+  if (!record?.session_id || !record?.server_url) return null;
+  const normalized = {
+    session_id: String(record.session_id),
+    server_url: new URL(record.server_url).origin,
+    reason: String(record.reason || 'unclean_shutdown'),
+    reuse_initial_check: record.reuse_initial_check === true,
+    queued_at: record.queued_at || new Date().toISOString(),
+  };
+  fs.writeFileSync(getPendingSessionLogoutPath(), JSON.stringify(normalized, null, 2), 'utf-8');
+  return normalized;
+}
+
+function clearPendingSessionLogout(sessionId) {
+  const pending = readPendingSessionLogout();
+  if (pending && pending.session_id !== String(sessionId || '')) return;
+  try { fs.unlinkSync(getPendingSessionLogoutPath()); } catch {}
+}
+
+function rememberActiveSessionForRecovery(sessionId) {
+  const cfg = loadServerConfig();
+  if (!sessionId || !cfg.serverUrl) return;
+  try {
+    persistPendingSessionLogout({
+      session_id: sessionId,
+      server_url: cfg.serverUrl,
+      reason: 'unclean_shutdown',
+      reuse_initial_check: true,
+    });
+  } catch (error) {
+    log.warn('[SESSION] Gagal menyimpan penanda sesi aktif:', error.message);
+  }
+}
+
+async function sendPendingSessionLogout(record, allowTokenRefresh = true) {
+  const token = getStoredClientToken();
+  if (!record?.server_url || !record?.session_id || !token) return false;
+
+  try {
+    const result = await safeJsonRequest(`${record.server_url}/api/auth/logout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Content-Length': Buffer.byteLength(body),
         Authorization: `Bearer ${token}`,
       },
-    }, () => {});
-    req.on('error', () => {});
-    req.write(body);
-    req.end();
-  } catch (_) {}
+      body: JSON.stringify({
+        session_id: record.session_id,
+        reason: record.reason,
+        reuse_initial_check: record.reuse_initial_check === true,
+      }),
+      timeoutMs: 2500,
+      maxBytes: 256 * 1024,
+    });
+
+    if (result.status === 401 && allowTokenRefresh) {
+      const freshToken = await refreshClientToken(record.server_url);
+      if (freshToken) return sendPendingSessionLogout(record, false);
+    }
+
+    if ((result.ok && result.data?.success) || result.status === 404) {
+      clearPendingSessionLogout(record.session_id);
+      log.info(`[SESSION] Sesi ${record.session_id} berhasil ditutup (${record.reason}).`);
+      return true;
+    }
+
+    log.warn(`[SESSION] Logout tertunda: HTTP ${result.status || 0}.`);
+  } catch (error) {
+    log.warn('[SESSION] Logout tertunda karena server belum dapat dijangkau:', error.message);
+  }
+  return false;
+}
+
+function queueSessionLogout(sessionId, reason = 'student_logout', reuseInitialCheck = false) {
+  if (!sessionId) return Promise.resolve(false);
+  const cfg = loadServerConfig();
+  const existing = readPendingSessionLogout();
+  let pending;
+  try {
+    pending = persistPendingSessionLogout({
+      session_id: sessionId,
+      server_url: existing?.session_id === String(sessionId)
+        ? existing.server_url
+        : cfg.serverUrl,
+      reason,
+      reuse_initial_check: reuseInitialCheck,
+      queued_at: existing?.queued_at,
+    });
+  } catch (error) {
+    log.warn('[SESSION] Gagal mengantrekan logout:', error.message);
+    return Promise.resolve(false);
+  }
+
+  if (sessionLogoutInFlight) return sessionLogoutInFlight;
+  sessionLogoutInFlight = sendPendingSessionLogout(pending)
+    .finally(() => { sessionLogoutInFlight = null; });
+  return sessionLogoutInFlight;
+}
+
+function retryPendingSessionLogout() {
+  const pending = readPendingSessionLogout();
+  if (!pending || pending.session_id === String(activeSessionId || '')) {
+    return Promise.resolve(false);
+  }
+  if (sessionLogoutInFlight) return sessionLogoutInFlight;
+  sessionLogoutInFlight = sendPendingSessionLogout(pending)
+    .finally(() => { sessionLogoutInFlight = null; });
+  return sessionLogoutInFlight;
+}
+
+function logoutActiveSessionOnQuit(reason = 'app_exit') {
+  if (!activeSessionId) return retryPendingSessionLogout();
+  const reuseInitialCheck = ['system_shutdown', 'system_restart', 'unclean_shutdown'].includes(reason);
+  return queueSessionLogout(activeSessionId, reason, reuseInitialCheck);
 }
 // ── IPC: Request HTTP renderer, dibatasi ke backend LabKom tersimpan ──────
 function isAllowedRendererApiUrl(parsed) {
@@ -2970,6 +3095,10 @@ app.whenReady().then(async () => {
   const initialConfig = loadServerConfig();
   if (initialConfig.serverUrl) connectRealtime(initialConfig.serverUrl);
   startPresenceHeartbeat();
+  setTimeout(() => {
+    retryPendingSessionLogout().catch(() => false);
+  }, 1_000).unref?.();
+
   startNetSupportMonitor();
 
   // Daftarkan MAC + mulai polling perintah remote setelah app siap
@@ -3015,15 +3144,16 @@ app.on('browser-window-focus', (_event, window) => {
 });
 app.on('session-end', () => {
   log.info('[APP] System session ending (shutdown/logout). Allowing quit and logging out active session...');
+  systemSessionEnding = true;
   allowAppQuit = true;
-  logoutActiveSessionOnQuit();
+  logoutActiveSessionOnQuit('system_shutdown');
 });
 app.on('before-quit', (event) => {
   if (!allowAppQuit) {
     preventUnexpectedQuit(event);
     return;
   }
-  logoutActiveSessionOnQuit();
+  logoutActiveSessionOnQuit(systemSessionEnding ? 'system_shutdown' : 'app_exit');
 });
 app.on('second-instance', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return;

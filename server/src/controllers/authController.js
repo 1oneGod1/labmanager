@@ -133,7 +133,7 @@ async function login(req, res) {
 
 // POST /api/auth/logout
 async function logout(req, res) {
-  const { session_id } = req.body;
+  const { session_id, reason = 'student_logout', reuse_initial_check = false } = req.body;
 
   if (!session_id) {
     return res.status(400).json({ success: false, message: 'session_id wajib diisi.' });
@@ -141,7 +141,7 @@ async function logout(req, res) {
 
   try {
     const session = await firebaseService.sessions.getById(session_id);
-    if (!session || session.status !== 'active') {
+    if (!session) {
       return res.status(404).json({ success: false, message: 'Sesi tidak ditemukan atau sudah selesai.' });
     }
     const ownsSession = session.device_id
@@ -152,13 +152,35 @@ async function logout(req, res) {
       return res.status(403).json({ success: false, message: 'Sesi bukan milik perangkat ini.' });
     }
 
+    const automaticReasons = new Set(['system_shutdown', 'system_restart', 'unclean_shutdown']);
+    const shouldReuseInitialCheck = reuse_initial_check === true && automaticReasons.has(reason);
+    let automaticCheck = null;
+    if (shouldReuseInitialCheck) {
+      automaticCheck = await firebaseService.checks.createPostFromInitial(session, reason);
+    }
+
+    // Permintaan shutdown dibuat idempoten. Jika proses sebelumnya sempat menutup
+    // sesi tetapi respons terputus, client boleh mengulang tanpa mengunci akun.
+    if (session.status !== 'active') {
+      return res.status(200).json({
+        success: true,
+        message: 'Sesi sudah selesai.',
+        data: { already_finished: true, automatic_check: automaticCheck },
+      });
+    }
+
+
     const result = await firebaseService.sessions.endSession(session_id, 'finished');
 
     if (!result) {
       return res.status(404).json({ success: false, message: 'Sesi tidak ditemukan atau sudah selesai.' });
     }
 
-    return res.status(200).json({ success: true, message: 'Logout berhasil.' });
+    return res.status(200).json({
+      success: true,
+      message: 'Logout berhasil.',
+      data: { already_finished: false, automatic_check: automaticCheck },
+    });
 
   } catch (err) {
     console.error('[LOGOUT ERROR]', err);

@@ -59,6 +59,19 @@ test('SQLite lokal mempertahankan kontrak seluruh layanan LabKom', async () => {
     assert.ok(check.id);
     assert.equal((await service.checks.getSummary({}))[0].issue_count, 1);
 
+    const automaticPost = await service.checks.createPostFromInitial(session, 'system_shutdown');
+    assert.equal(automaticPost.created, true);
+    assert.equal(automaticPost.check.check_type, 'post');
+    assert.equal(automaticPost.check.keyboard_status, 'bad');
+    assert.equal(automaticPost.check.auto_generated, true);
+    assert.equal(automaticPost.check.auto_reason, 'system_shutdown');
+    assert.equal(automaticPost.check.copied_from_check_id, check.id);
+
+    const repeatedPost = await service.checks.createPostFromInitial(session, 'system_shutdown');
+    assert.equal(repeatedPost.created, false);
+    assert.equal(repeatedPost.reason, 'post_exists');
+    assert.equal((await service.checks.getBySession(session.id)).filter((row) => row.check_type === 'post').length, 1);
+
     await service.control.set('blocked_sites', ['example.com']);
     assert.deepEqual(await service.control.get('blocked_sites'), ['example.com']);
 

@@ -139,3 +139,55 @@ test('requireDevice does not accept an admin session token', () => {
     adminSessions.revokeToken(adminToken);
   }
 });
+
+test('shutdown logout is idempotent and copies the initial checklist once', async () => {
+  const deviceId = '77777777777777777777777777777777';
+  const session = await dataService.sessions.create({
+    student_id: 'student-shutdown-test',
+    pc_name: 'PC-TEST-SHUTDOWN',
+    actual_pc_name: 'PC-TEST-SHUTDOWN',
+    device_id: deviceId,
+    nis: '7001',
+    nama_lengkap: 'Siswa Shutdown',
+  });
+  const initial = await dataService.checks.create({
+    session_id: session.id,
+    nis: '7001',
+    nama_lengkap: 'Siswa Shutdown',
+    pc_name: 'PC-TEST-SHUTDOWN',
+    check_type: 'pre',
+    monitor_status: 'ok',
+    keyboard_status: 'bad',
+    keyboard_note: 'Tombol A lepas',
+  });
+
+  const { logout } = require('../src/controllers/authController');
+  const makeRequest = () => ({
+    body: {
+      session_id: session.id,
+      reason: 'system_shutdown',
+      reuse_initial_check: true,
+    },
+    actor: { role: 'client', device_id: deviceId, pc_name: 'PC-TEST-SHUTDOWN' },
+  });
+
+  const firstResponse = responseRecorder();
+  await logout(makeRequest(), firstResponse);
+  assert.equal(firstResponse.statusCode, 200);
+  assert.equal(firstResponse.body.success, true);
+  assert.equal(firstResponse.body.data.automatic_check.created, true);
+
+  const secondResponse = responseRecorder();
+  await logout(makeRequest(), secondResponse);
+  assert.equal(secondResponse.statusCode, 200);
+  assert.equal(secondResponse.body.data.already_finished, true);
+  assert.equal(secondResponse.body.data.automatic_check.reason, 'post_exists');
+
+  const checks = await dataService.checks.getBySession(session.id);
+  const posts = checks.filter((check) => check.check_type === 'post');
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].keyboard_status, 'bad');
+  assert.equal(posts[0].keyboard_note, 'Tombol A lepas');
+  assert.equal(posts[0].copied_from_check_id, initial.id);
+  assert.equal((await dataService.sessions.getById(session.id)).status, 'finished');
+});
